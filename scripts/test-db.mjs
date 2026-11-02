@@ -1,4 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const root = fileURLToPath(new URL('..', import.meta.url));
+const vitest = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
 
 const name = 'tumogroup-monitor-test-db';
 const port = '54329';
@@ -12,20 +16,12 @@ const cleanup = () => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-cleanup();
-const started = docker(
-    'run', '--detach', '--name', name,
-    '--publish', `127.0.0.1:${port}:5432`,
-    '--env', 'POSTGRES_PASSWORD=test',
-    '--env', 'POSTGRES_DB=monitor_test',
-    'postgres:17-alpine',
-);
-if (started.status !== 0) {
-    console.error(started.stderr);
-    process.exit(1);
-}
+const finish = (child) =>
+    new Promise((resolve) => {
+        child.on('error', () => resolve(1));
+        child.on('close', (status) => resolve(status ?? 1));
+    });
 
-let code = 1;
 let child = null;
 
 const stop = (signal) => {
@@ -36,24 +32,42 @@ const stop = (signal) => {
 process.on('SIGINT', () => stop('SIGINT'));
 process.on('SIGTERM', () => stop('SIGTERM'));
 
+let code = 1;
 try {
-    let ready = false;
-    for (let attempt = 0; attempt < 60 && !ready; attempt++) {
-        const probe = docker('exec', name, 'psql', '-U', 'postgres', '-h', '127.0.0.1', '-d', 'monitor_test', '-tAc', 'select 1');
-        ready = probe.status === 0 && probe.stdout.trim() === '1';
-        if (!ready) await sleep(500);
-    }
-    if (!ready) {
-        console.error('Postgres did not become ready in time.');
+    cleanup();
+    child = spawn(
+        'docker',
+        [
+            'run', '--detach', '--name', name,
+            '--publish', `127.0.0.1:${port}:5432`,
+            '--env', 'POSTGRES_PASSWORD=test',
+            '--env', 'POSTGRES_DB=monitor_test',
+            'postgres:17-alpine',
+        ],
+        { stdio: 'inherit' },
+    );
+    const started = await finish(child);
+    child = null;
+    if (started !== 0) {
+        console.error('Could not start the Postgres container.');
     } else {
-        child = spawn(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', '--config', 'vitest.db.config.mts'], {
-            stdio: 'inherit',
-            env: { ...process.env, TEST_DATABASE_URL: url },
-        });
-        code = await new Promise((resolve) => {
-            child.on('error', () => resolve(1));
-            child.on('close', (status) => resolve(status ?? 1));
-        });
+        let ready = false;
+        for (let attempt = 0; attempt < 60 && !ready; attempt++) {
+            const probe = docker('exec', name, 'psql', '-U', 'postgres', '-h', '127.0.0.1', '-d', 'monitor_test', '-tAc', 'select 1');
+            ready = probe.status === 0 && probe.stdout.trim() === '1';
+            if (!ready) await sleep(500);
+        }
+        if (!ready) {
+            console.error('Postgres did not become ready in time.');
+        } else {
+            child = spawn(process.execPath, [vitest, 'run', '--config', 'vitest.db.config.mts'], {
+                cwd: root,
+                stdio: 'inherit',
+                env: { ...process.env, TEST_DATABASE_URL: url },
+            });
+            code = await finish(child);
+            child = null;
+        }
     }
 } finally {
     cleanup();
