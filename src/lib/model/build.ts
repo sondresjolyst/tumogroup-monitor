@@ -1,0 +1,271 @@
+import type { Report, ReportRepository } from '../report/schema';
+import { cooldownEnd, lastEndedSunday, nextSundayRun, plannedSlotBefore } from '../schedule';
+import type {
+    PageModel,
+    PrRow,
+    ProblemRow,
+    RenovatePr,
+    RunRow,
+    Tag,
+    UpdateRow,
+    Warning,
+    WorkflowRun,
+} from './types';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const AUTOMERGE_ENABLED = /\*\*Automerge\*\*:\s*Enabled/;
+const NO_DATE_LABEL = 'no-release-date';
+const PIN_TYPES = new Set(['pin', 'pinDigest']);
+
+const dateFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Oslo', dateStyle: 'medium' });
+
+interface BranchInfo {
+    major: boolean;
+    noDate: boolean;
+}
+
+interface Candidate {
+    repo: string;
+    branch: string;
+    dep: string;
+    newVersion: string;
+    updateType: string;
+    sourceUrl: string | null;
+    releaseTimestamp: string | null;
+    end: Date | null;
+    pending: boolean;
+}
+
+function isNoDate(update: { updateType: string; releaseTimestamp?: string | null }): boolean {
+    return !update.releaseTimestamp && !PIN_TYPES.has(update.updateType);
+}
+
+function* eachUpdate(repository: ReportRepository) {
+    for (const files of Object.values(repository.packageFiles)) {
+        for (const file of files) {
+            for (const dep of file.deps) {
+                for (const update of dep.updates) yield { ...update, dep };
+            }
+        }
+    }
+}
+
+function branchInfos(repository: ReportRepository): Map<string, BranchInfo> {
+    const infos = new Map<string, BranchInfo>();
+    const info = (branch: string): BranchInfo => {
+        let found = infos.get(branch);
+        if (!found) infos.set(branch, (found = { major: false, noDate: false }));
+        return found;
+    };
+    for (const branch of repository.branches) {
+        if (branch.upgrades.some((upgrade) => upgrade.updateType === 'major')) info(branch.branchName).major = true;
+    }
+    for (const update of eachUpdate(repository)) {
+        const found = info(update.branchName ?? '');
+        if (update.updateType === 'major') found.major = true;
+        if (isNoDate(update)) found.noDate = true;
+    }
+    return infos;
+}
+
+function candidates(repo: string, repository: ReportRepository, openBranches: Set<string>, now: Date): Candidate[] {
+    const seen = new Set<string>();
+    const found: Candidate[] = [];
+    for (const update of eachUpdate(repository)) {
+        const branch = update.branchName ?? '';
+        if (openBranches.has(`${repo}\n${branch}`)) continue;
+        const newVersion = update.newValue ?? update.newVersion ?? '';
+        const key = [branch, update.dep.depName, newVersion].join('\n');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const end = update.releaseTimestamp ? cooldownEnd(update.releaseTimestamp) : null;
+        found.push({
+            repo,
+            branch,
+            dep: update.dep.depName,
+            newVersion,
+            updateType: update.updateType,
+            sourceUrl: update.dep.sourceUrl ?? null,
+            releaseTimestamp: update.releaseTimestamp ?? null,
+            end,
+            pending: update.pendingChecks === true && end !== null && end.getTime() > now.getTime(),
+        });
+    }
+    return found;
+}
+
+/**
+ * Renovate drops pending updates from a group when any update in it is ready,
+ * so a group is created on the first Sunday run after its first ready update.
+ * With no ready update it waits for the earliest cooldown end.
+ */
+function groupExpectedPr(group: Candidate[], now: Date): Date {
+    if (group.some((candidate) => !candidate.pending)) return nextSundayRun(now);
+    const earliest = Math.min(...group.map((candidate) => candidate.end!.getTime()));
+    return nextSundayRun(new Date(earliest));
+}
+
+function updateRows(report: Report, openBranches: Set<string>, now: Date) {
+    const cooldown: UpdateRow[] = [];
+    const waiting: UpdateRow[] = [];
+    for (const [repo, repository] of Object.entries(report.repositories)) {
+        const groups = Map.groupBy(candidates(repo, repository, openBranches, now), (candidate) => candidate.branch);
+        for (const group of groups.values()) {
+            const expectedPr = groupExpectedPr(group, now).toISOString();
+            for (const candidate of group) {
+                const tags: Tag[] = [];
+                if (candidate.updateType === 'major') tags.push('Major');
+                if (isNoDate(candidate)) tags.push('No release date');
+                const row: UpdateRow = {
+                    repo,
+                    branch: candidate.branch,
+                    dep: candidate.dep,
+                    newVersion: candidate.newVersion,
+                    updateType: candidate.updateType,
+                    sourceUrl: candidate.sourceUrl,
+                    dashboardIssue: repository.dependencyDashboardIssue ?? null,
+                    tags,
+                    releaseTimestamp: candidate.releaseTimestamp,
+                    cooldownEnd: candidate.end?.toISOString() ?? null,
+                    daysLeft: candidate.pending ? (candidate.end!.getTime() - now.getTime()) / DAY_MS : null,
+                    expectedPr,
+                };
+                (candidate.pending ? cooldown : waiting).push(row);
+            }
+        }
+    }
+    const byName = (a: UpdateRow, b: UpdateRow) => a.repo.localeCompare(b.repo) || a.dep.localeCompare(b.dep);
+    cooldown.sort((a, b) => a.cooldownEnd!.localeCompare(b.cooldownEnd!) || byName(a, b));
+    waiting.sort(byName);
+    return { cooldown, waiting };
+}
+
+function prRows(report: Report, prs: RenovatePr[]) {
+    const infos = new Map<string, Map<string, BranchInfo>>();
+    const needsApproval: PrRow[] = [];
+    const otherPrs: PrRow[] = [];
+    for (const pr of prs) {
+        const repository = report.repositories[pr.repo];
+        if (repository && !infos.has(pr.repo)) infos.set(pr.repo, branchInfos(repository));
+        const info = infos.get(pr.repo)?.get(pr.branch);
+        const tags: Tag[] = [];
+        if (info?.major) tags.push('Major');
+        if (info?.noDate || pr.labels.includes(NO_DATE_LABEL)) tags.push('No release date');
+        const row: PrRow = {
+            repo: pr.repo,
+            number: pr.number,
+            title: pr.title,
+            url: pr.url,
+            branch: pr.branch,
+            createdAt: pr.createdAt,
+            checks: pr.checks,
+            tags,
+        };
+        (AUTOMERGE_ENABLED.test(pr.body) ? otherPrs : needsApproval).push(row);
+    }
+    const failing = (row: PrRow) => (row.checks === 'failing' ? 0 : 1);
+    const major = (row: PrRow) => (row.tags.includes('Major') ? 0 : 1);
+    const oldest = (a: PrRow, b: PrRow) => a.createdAt.localeCompare(b.createdAt);
+    needsApproval.sort((a, b) => major(a) - major(b) || failing(a) - failing(b) || oldest(a, b));
+    otherPrs.sort((a, b) => failing(a) - failing(b) || oldest(a, b));
+    return { needsApproval, otherPrs };
+}
+
+function problemText(problem: unknown): string {
+    if (typeof problem === 'string') return problem;
+    if (problem && typeof problem === 'object' && 'msg' in problem && typeof problem.msg === 'string') return problem.msg;
+    return JSON.stringify(problem);
+}
+
+function problemRows(report: Report): ProblemRow[] {
+    const rows: ProblemRow[] = report.problems.map((problem) => ({
+        kind: 'report',
+        repo: null,
+        subject: null,
+        message: problemText(problem),
+    }));
+    for (const [repo, repository] of Object.entries(report.repositories)) {
+        if (repository.status === 'disabled') {
+            rows.push({ kind: 'disabled', repo, subject: null, message: 'Renovate is disabled for this repository' });
+        }
+        for (const problem of repository.problems) {
+            rows.push({ kind: 'repo', repo, subject: null, message: problemText(problem) });
+        }
+        const seen = new Set<string>();
+        for (const files of Object.values(repository.packageFiles)) {
+            for (const file of files) {
+                for (const dep of file.deps) {
+                    const found: ProblemRow[] = [];
+                    if (dep.isAbandoned) {
+                        found.push({ kind: 'abandoned', repo, subject: dep.depName, message: 'The package looks abandoned' });
+                    }
+                    if (dep.deprecationMessage) {
+                        found.push({ kind: 'deprecated', repo, subject: dep.depName, message: dep.deprecationMessage });
+                    }
+                    for (const row of found) {
+                        const key = `${row.kind}\n${row.subject}`;
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        rows.push(row);
+                    }
+                }
+            }
+        }
+    }
+    return rows;
+}
+
+function runRows(runs: WorkflowRun[]): RunRow[] {
+    return runs
+        .map((run) => {
+            const startedAt = new Date(run.startedAt);
+            return {
+                id: run.id,
+                event: run.event,
+                plannedSlot: run.event === 'schedule' ? plannedSlotBefore(startedAt).toISOString() : null,
+                startedAt: startedAt.toISOString(),
+                durationMs: Math.max(0, new Date(run.updatedAt).getTime() - startedAt.getTime()),
+                conclusion: run.conclusion,
+            };
+        })
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+}
+
+function sundayWarnings(runs: WorkflowRun[], now: Date): Warning[] {
+    const { start, end } = lastEndedSunday(now);
+    const starts = runs.filter((run) => run.event === 'schedule').map((run) => new Date(run.startedAt));
+    const inWindow = (date: Date) => date >= start && date < end;
+    if (starts.some(inWindow)) return [];
+    const sunday = dateFormat.format(start);
+    if (starts.some((date) => date >= end && inWindow(plannedSlotBefore(date)))) {
+        return [{ kind: 'late-sunday-run', message: `The scheduled run for Sunday ${sunday} started after the day had ended.` }];
+    }
+    return [{ kind: 'no-sunday-run', message: `No scheduled run started on Sunday ${sunday}.` }];
+}
+
+export function buildModel(report: Report, prs: RenovatePr[], runs: WorkflowRun[], now: Date): PageModel {
+    const openBranches = new Set(prs.map((pr) => `${pr.repo}\n${pr.branch}`));
+    const { cooldown, waiting } = updateRows(report, openBranches, now);
+    const { needsApproval, otherPrs } = prRows(report, prs);
+    const problems = problemRows(report);
+    const runHistory = runRows(runs);
+    const noReleaseDate = [...needsApproval, ...waiting].filter((row) => row.tags.includes('No release date')).length;
+    return {
+        counts: {
+            needsApproval: needsApproval.length,
+            cooldown: cooldown.length,
+            waiting: waiting.length,
+            otherPrs: otherPrs.length,
+            noReleaseDate,
+            problems: problems.length,
+        },
+        needsApproval,
+        cooldown,
+        waiting,
+        otherPrs,
+        problems,
+        runs: runHistory,
+        warnings: sundayWarnings(runs, now),
+        latestRunAt: runHistory[0]?.startedAt ?? null,
+    };
+}

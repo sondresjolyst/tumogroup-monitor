@@ -98,3 +98,17 @@ export function plannedSlotBefore(start: Date): Date {
 export function lateness(start: Date): number {
     return start.getTime() - plannedSlotBefore(start).getTime();
 }
+
+/** The most recent Oslo Sunday that has fully ended, from Oslo midnight to Oslo midnight. */
+export function lastEndedSunday(now: Date): { start: Date; end: Date } {
+    const today = osloDate(now.getTime());
+    for (let offset = 1; offset <= 7; offset++) {
+        const day = addDays(today, -offset);
+        if (!isSunday(day)) continue;
+        return {
+            start: new Date(osloToInstant(day, 0, 0)),
+            end: new Date(osloToInstant(addDays(day, 1), 0, 0)),
+        };
+    }
+    throw new Error('No Sunday found');
+}
