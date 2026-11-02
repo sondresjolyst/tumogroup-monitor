@@ -1,6 +1,8 @@
 import { getServerSession, type NextAuthOptions, type Session } from 'next-auth';
 import GithubProvider from 'next-auth/providers/github';
 import { redirect } from 'next/navigation';
+import { connection } from 'next/server';
+import { authMisconfigured, logMisconfigured } from './gate';
 
 declare module 'next-auth' {
     interface Session {
@@ -47,7 +49,7 @@ export const authOptions: NextAuthOptions = {
         }),
     ],
     session: { strategy: 'jwt', maxAge: 60 * 60 * 12 },
-    pages: { error: '/denied' },
+    pages: { signIn: '/signin', error: '/auth-error' },
     callbacks: {
         signIn({ user }) {
             return isAllowedUser(user.id, process.env.ALLOWED_GITHUB_USER_ID) ? true : '/denied';
@@ -68,8 +70,14 @@ export const authOptions: NextAuthOptions = {
  * so a session stops working once `ALLOWED_GITHUB_USER_ID` changes. Anyone else is redirected.
  */
 export async function requireOwner(): Promise<Session> {
+    // The check depends on the request, so a page must never be built ahead of time.
+    await connection();
+    if (authMisconfigured(process.env)) {
+        logMisconfigured();
+        throw new Error('NEXTAUTH_URL must be an https URL in production');
+    }
     const session = await getServerSession(authOptions);
-    if (!session) redirect('/api/auth/signin');
+    if (!session) redirect('/signin');
     if (!isAllowedUser(session.githubId, process.env.ALLOWED_GITHUB_USER_ID)) redirect('/denied');
     return session;
 }

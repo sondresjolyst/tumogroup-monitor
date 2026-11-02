@@ -1,9 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Session } from 'next-auth';
-import { authOptions, isAllowedUser } from './options';
+import { getServerSession, type Session } from 'next-auth';
+import { authOptions, isAllowedUser, requireOwner } from './options';
+
+vi.mock('next-auth', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('next-auth')>()),
+    getServerSession: vi.fn(),
+}));
+vi.mock('next/server', () => ({ connection: async () => {} }));
+vi.mock('next/navigation', () => ({
+    redirect: (to: string) => {
+        throw new Error('redirect:' + to);
+    },
+}));
 
 afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
 });
 
 describe('isAllowedUser', () => {
@@ -92,5 +104,47 @@ describe('callbacks', () => {
         };
         const user = provider.options.profile({ id: 12345, login: 'octocat', name: 'x', email: 'a@b.c', avatar_url: '' });
         expect(user.id).toBe('12345');
+    });
+});
+
+describe('requireOwner', () => {
+    it('redirects to sign-in without a session', async () => {
+        vi.mocked(getServerSession).mockResolvedValue(null);
+        vi.stubEnv('ALLOWED_GITHUB_USER_ID', '12345');
+        await expect(requireOwner()).rejects.toThrow('redirect:/signin');
+    });
+
+    it('redirects to the denied page for another ID', async () => {
+        vi.mocked(getServerSession).mockResolvedValue({ githubId: '999', expires: 'x' });
+        vi.stubEnv('ALLOWED_GITHUB_USER_ID', '12345');
+        await expect(requireOwner()).rejects.toThrow('redirect:/denied');
+    });
+
+    it('redirects to the denied page when the allowlist is unset', async () => {
+        vi.mocked(getServerSession).mockResolvedValue({ githubId: '12345', expires: 'x' });
+        vi.stubEnv('ALLOWED_GITHUB_USER_ID', '');
+        await expect(requireOwner()).rejects.toThrow('redirect:/denied');
+    });
+
+    it('redirects to the denied page when the session has no ID', async () => {
+        vi.mocked(getServerSession).mockResolvedValue({ expires: 'x' });
+        vi.stubEnv('ALLOWED_GITHUB_USER_ID', '12345');
+        await expect(requireOwner()).rejects.toThrow('redirect:/denied');
+    });
+
+    it('returns the session for the owner', async () => {
+        const owner = { githubId: '12345', expires: 'x' };
+        vi.mocked(getServerSession).mockResolvedValue(owner);
+        vi.stubEnv('ALLOWED_GITHUB_USER_ID', '12345');
+        await expect(requireOwner()).resolves.toBe(owner);
+    });
+
+    it('fails closed in production without an https NEXTAUTH_URL', async () => {
+        vi.mocked(getServerSession).mockResolvedValue({ githubId: '12345', expires: 'x' });
+        vi.stubEnv('ALLOWED_GITHUB_USER_ID', '12345');
+        vi.stubEnv('NODE_ENV', 'production');
+        vi.stubEnv('NEXTAUTH_URL', 'http://monitor.example.test');
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        await expect(requireOwner()).rejects.toThrow('NEXTAUTH_URL');
     });
 });

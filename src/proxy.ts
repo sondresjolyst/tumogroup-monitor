@@ -1,6 +1,6 @@
 import { getToken } from 'next-auth/jwt';
 import { NextResponse, type NextRequest } from 'next/server';
-import { isPublicPath, signInUrl } from '@/lib/auth/gate';
+import { authMisconfigured, isPublicPath, logMisconfigured, signInUrl } from '@/lib/auth/gate';
 import { isAllowedUser } from '@/lib/auth/options';
 
 async function readToken(req: NextRequest) {
@@ -14,6 +14,11 @@ async function readToken(req: NextRequest) {
 export async function proxy(req: NextRequest) {
     const { pathname } = req.nextUrl;
     if (isPublicPath(pathname)) return NextResponse.next();
+
+    if (authMisconfigured(process.env)) {
+        logMisconfigured();
+        return new NextResponse('Service unavailable', { status: 503 });
+    }
 
     const token = await readToken(req);
     const isApi = pathname === '/api' || pathname.startsWith('/api/');
