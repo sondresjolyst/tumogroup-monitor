@@ -66,6 +66,11 @@ describe('authMisconfigured', () => {
         expect(authMisconfigured({ NODE_ENV: 'production', NEXTAUTH_URL: 'not a url' })).toBe(true);
     });
 
+    it('requires the literal lower case https:// prefix', () => {
+        expect(authMisconfigured({ NODE_ENV: 'production', NEXTAUTH_URL: 'HTTPS://monitor.example.test' })).toBe(true);
+        expect(authMisconfigured({ NODE_ENV: 'production', NEXTAUTH_URL: ' https://monitor.example.test' })).toBe(true);
+    });
+
     it('accepts https in production', () => {
         expect(authMisconfigured({ NODE_ENV: 'production', NEXTAUTH_URL: 'https://monitor.example.test' })).toBe(false);
     });

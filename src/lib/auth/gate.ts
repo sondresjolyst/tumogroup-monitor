@@ -31,8 +31,12 @@ export function signInUrl(url: URL): string {
  */
 export function authMisconfigured(env: Record<string, string | undefined>): boolean {
     if (env.NODE_ENV !== 'production') return false;
+    // next-auth checks the prefix with startsWith, so the check here must be as literal.
+    const url = env.NEXTAUTH_URL ?? '';
+    if (!url.startsWith('https://')) return true;
     try {
-        return new URL(env.NEXTAUTH_URL ?? '').protocol !== 'https:';
+        new URL(url);
+        return false;
     } catch {
         return true;
     }

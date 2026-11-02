@@ -68,6 +68,26 @@ describe('proxy', () => {
         expect((await call('/health')).headers.get('x-middleware-next')).toBe('1');
     });
 
+    it.each(['/api/auth/callback/github', '/api/auth/signin', '/signin', '/auth-error'])(
+        'returns 503 for %s when the auth address is misconfigured',
+        async (path) => {
+            vi.stubEnv('NODE_ENV', 'production');
+            vi.stubEnv('NEXTAUTH_URL', 'http://monitor.example.test');
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+            const res = await call(path);
+            expect(res.status).toBe(503);
+            expect(res.headers.get('set-cookie')).toBeNull();
+        },
+    );
+
+    it('keeps /health open when the auth address is misconfigured', async () => {
+        vi.stubEnv('NODE_ENV', 'production');
+        vi.stubEnv('NEXTAUTH_URL', '');
+        const res = await call('/health');
+        expect(res.status).toBe(200);
+        expect(res.headers.get('x-middleware-next')).toBe('1');
+    });
+
     it('treats a token error as no session', async () => {
         getToken.mockRejectedValue(new Error('bad'));
         const res = await call('/api/x');
