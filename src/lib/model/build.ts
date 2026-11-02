@@ -24,6 +24,7 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Oslo', d
 interface BranchInfo {
     major: boolean;
     noDate: boolean;
+    sources: Set<string>;
 }
 
 interface Candidate {
@@ -84,7 +85,7 @@ function branchInfos(repository: ReportRepository): Map<string, BranchInfo> {
     const infos = new Map<string, BranchInfo>();
     const info = (branch: string): BranchInfo => {
         let found = infos.get(branch);
-        if (!found) infos.set(branch, (found = { major: false, noDate: false }));
+        if (!found) infos.set(branch, (found = { major: false, noDate: false, sources: new Set() }));
         return found;
     };
     for (const branch of repository.branches) {
@@ -94,6 +95,7 @@ function branchInfos(repository: ReportRepository): Map<string, BranchInfo> {
         const found = info(update.branchName ?? '');
         if (update.updateType === 'major') found.major = true;
         if (isNoDate(update)) found.noDate = true;
+        if (update.dep.sourceUrl) found.sources.add(update.dep.sourceUrl);
     }
     return infos;
 }
@@ -193,6 +195,8 @@ function prRows(report: Report, prs: RenovatePr[]) {
             createdAt: pr.createdAt,
             checks: pr.checks,
             tags,
+            // A group with several sources has no one page for its notes. They are in the PR.
+            sourceUrl: info?.sources.size === 1 ? [...info.sources][0] : null,
         };
         (automergeEnabled(pr.body) ? otherPrs : needsApproval).push(row);
     }
@@ -254,7 +258,7 @@ function problemRows(report: Report): ProblemRow[] {
     return rows;
 }
 
-function runRows(runs: WorkflowRun[]): RunRow[] {
+export function runRows(runs: WorkflowRun[]): RunRow[] {
     return runs
         .map((run) => {
             const startedAt = new Date(run.startedAt);

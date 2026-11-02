@@ -31,6 +31,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
     output: 'standalone',
     poweredByHeader: false,
+    // app-kit ships as TypeScript source.
+    transpilePackages: ['@sjolystinnovation/app-kit'],
     async headers() {
         return [{ source: '/:path*', headers: securityHeaders }];
     },

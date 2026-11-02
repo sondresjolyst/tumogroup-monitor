@@ -44,6 +44,7 @@ const pr = (url: string): PrRow => ({
     createdAt: '2026-10-30T06:00:00Z',
     checks: 'none',
     tags: [],
+    sourceUrl: 'javascript:alert(2)',
 });
 
 describe('safeUrl', () => {
@@ -73,6 +74,7 @@ describe('sanitizeModel', () => {
         expect(result.cooldown[0].sourceUrl).toBeNull();
         expect(result.waiting[0].sourceUrl).toBe('https://ok.example/');
         expect(result.needsApproval[0].url).toBe('');
+        expect(result.needsApproval[0].sourceUrl).toBeNull();
         expect(result.otherPrs[0].url).toBe('https://github.com/a/b/pull/1');
     });
 

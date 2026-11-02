@@ -1,6 +1,7 @@
 node_modules/
 .next/
 out/
+/job/
 build/
 .env
 .env.local

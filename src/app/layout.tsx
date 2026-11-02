@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
+import './globals.css';
 
 export const metadata: Metadata = {
-    title: 'Tumogroup monitor',
+    title: { default: 'Tumogroup monitor', template: '%s | Tumogroup monitor' },
     robots: { index: false, follow: false },
 };
 

@@ -31,6 +31,7 @@ export interface PrRow {
     createdAt: string;
     checks: ChecksState;
     tags: Tag[];
+    sourceUrl: string | null;
 }
 
 export interface UpdateRow {

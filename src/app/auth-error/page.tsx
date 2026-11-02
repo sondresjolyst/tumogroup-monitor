@@ -6,9 +6,9 @@ export default async function AuthError({ searchParams }: { searchParams: Promis
     // A rejected account is sent to the denied page. Every other error is a failed sign-in.
     if (error === 'AccessDenied') redirect('/denied');
     return (
-        <main>
+        <main className="p-6 text-sm">
             <p>Sign-in failed.</p>
-            <Link href="/signin">Try again</Link>
+            <Link href="/signin" className="text-link hover:underline">Try again</Link>
         </main>
     );
 }

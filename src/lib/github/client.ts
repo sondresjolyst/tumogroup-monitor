@@ -5,6 +5,7 @@ import type { ChecksState, RenovatePr, WorkflowRun } from '@/lib/model/types';
 
 const OWNER = 'sondresjolyst';
 const CONFIG_REPO = 'si-renovate-config';
+export const CONFIG_REPO_URL = `https://github.com/${OWNER}/${CONFIG_REPO}`;
 const WORKFLOW_FILE = 'renovate.yml';
 const REPORT_ARTIFACT = 'renovate-report';
 const PR_QUERY = `is:pr is:open author:app/sjolyst-innovation-renovate user:${OWNER}`;

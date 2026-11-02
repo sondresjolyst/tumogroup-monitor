@@ -18,3 +18,9 @@ The refresh job needs these:
 - `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY`: the GitHub App that reads the repositories.
 - `GITHUB_API_URL`: optional, defaults to the public GitHub API.
 - `GITHUB_TIMEOUT_MS`: optional, the timeout for each GitHub request.
+
+## Checks
+
+- `npm test`: unit and component tests.
+- `npm run test:db`: store tests against Postgres in Docker.
+- `npm run test:e2e`: Playwright checks against the production build, with Postgres in Docker. Run `npm run build` first. `PLAYWRIGHT_OUTPUT_DIR` sets where Playwright writes its output, and `E2E_SCREENSHOT_DIR` turns on screenshots.

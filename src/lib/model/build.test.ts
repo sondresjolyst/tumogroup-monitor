@@ -182,6 +182,26 @@ describe('buildModel robustness', () => {
         expect(model.otherPrs).toEqual([]);
     });
 
+    it('a PR takes the source of its update, for the release notes link', () => {
+        const model = build([pr({ repo: 'example-org/app-one', branch: 'renovate/vite-9.x' })]);
+        expect(model.needsApproval[0].sourceUrl).toBe('https://github.com/example-vendor/vite');
+    });
+
+    it('a group PR with several sources has no single source', () => {
+        const model = build([pr({ branch: 'renovate/nuget-dependencies' })]);
+        expect(model.needsApproval[0].sourceUrl).toBeNull();
+    });
+
+    it('a PR on a branch the report does not know has no source', () => {
+        const model = build([pr({ branch: 'renovate/unknown' })]);
+        expect(model.needsApproval[0].sourceUrl).toBeNull();
+    });
+
+    it('a group PR with one source keeps it', () => {
+        const model = build([pr({ branch: 'renovate/npm-dependencies' })]);
+        expect(model.needsApproval[0].sourceUrl).toBe('https://github.com/example-vendor/lodash');
+    });
+
     it('an unclear or null body goes to needsApproval', () => {
         const model = build([pr({ number: 1, body: null }), pr({ number: 2, body: '**Automerge**: ' })]);
         expect(model.needsApproval.map((r) => r.number).sort()).toEqual([1, 2]);
