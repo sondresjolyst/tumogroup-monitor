@@ -1,3 +1,8 @@
+/** Raise this when the shape of PageModel changes, so the page does not read a stored model of the old shape. */
+export const MODEL_VERSION = 1;
+
+export const MAIN_BRANCH = 'main';
+
 export type ChecksState = 'failing' | 'pending' | 'passing' | 'none';
 
 export type Tag = 'Major' | 'No release date';
@@ -17,6 +22,7 @@ export interface RenovatePr {
 export interface WorkflowRun {
     id: number;
     event: string;
+    headBranch: string | null;
     startedAt: string;
     updatedAt: string;
     conclusion: string | null;
@@ -61,6 +67,7 @@ export interface ProblemRow {
 export interface RunRow {
     id: number;
     event: string;
+    headBranch: string | null;
     plannedSlot: string | null;
     startedAt: string;
     durationMs: number;
@@ -84,6 +91,7 @@ export interface Counts {
 }
 
 export interface PageModel {
+    modelVersion: number;
     counts: Counts;
     needsApproval: PrRow[];
     cooldown: UpdateRow[];

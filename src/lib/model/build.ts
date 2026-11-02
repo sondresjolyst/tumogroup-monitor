@@ -1,15 +1,16 @@
 import type { Report, ReportRepository } from '../report/schema';
 import { cooldownEnd, lastEndedSunday, nextSundayRun, plannedSlotBefore } from '../schedule';
-import type {
-    PageModel,
-    PrRow,
-    ProblemRow,
-    RenovatePr,
-    RunRow,
-    Tag,
-    UpdateRow,
-    Warning,
-    WorkflowRun,
+import {
+    MODEL_VERSION,
+    type PageModel,
+    type PrRow,
+    type ProblemRow,
+    type RenovatePr,
+    type RunRow,
+    type Tag,
+    type UpdateRow,
+    type Warning,
+    type WorkflowRun,
 } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -255,6 +256,7 @@ export function runRows(runs: WorkflowRun[]): RunRow[] {
             return {
                 id: run.id,
                 event: run.event,
+                headBranch: run.headBranch,
                 plannedSlot: run.event === 'schedule' ? plannedSlotBefore(startedAt).toISOString() : null,
                 startedAt: startedAt.toISOString(),
                 durationMs: Math.max(0, new Date(run.updatedAt).getTime() - startedAt.getTime()),
@@ -289,6 +291,7 @@ export function buildModel(report: Report, prs: RenovatePr[], runs: WorkflowRun[
     const problems = problemRows(report);
     const noReleaseDate = [...needsApproval, ...otherPrs, ...waiting].filter((row) => row.tags.includes('No release date')).length;
     return {
+        modelVersion: MODEL_VERSION,
         counts: {
             needsApproval: needsApproval.length,
             cooldown: cooldown.length,

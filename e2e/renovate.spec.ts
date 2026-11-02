@@ -38,6 +38,14 @@ test('warnings show on the page', async ({ page }) => {
     await expect(warnings.filter({ hasText: /No scheduled run started on Sunday/ })).toBeVisible();
 });
 
+test('the header shows the run on main, and run history marks the branch run', async ({ page }) => {
+    await open(page);
+    const header = page.getByRole('banner');
+    await expect(header).toContainText('success');
+    await expect(header).not.toContainText('failure');
+    await expect(page.getByRole('region', { name: /^Run history/ }).getByText('workflow_dispatch on example/test-branch')).toBeVisible();
+});
+
 test('a third-party title renders as text and an empty URL renders no link', async ({ page }) => {
     await open(page);
     await expect(page.getByText('<img src=x onerror=alert(1)> update nuget group')).toBeVisible();

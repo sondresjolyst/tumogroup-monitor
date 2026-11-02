@@ -28,11 +28,17 @@ describe('listRuns', () => {
             {
                 id: 7,
                 event: 'schedule',
+                headBranch: 'main',
                 startedAt: '2026-11-01T02:00:00Z',
                 updatedAt: '2026-11-01T02:20:00Z',
                 conclusion: 'success',
             },
         ]);
+    });
+
+    it('maps a run with no branch to null', async () => {
+        state.runs = [{ ...fakeRun(7, []), head_branch: null as unknown as string }];
+        expect((await client().listRuns())[0].headBranch).toBeNull();
     });
 
     it('times out instead of waiting for a stuck call', async () => {

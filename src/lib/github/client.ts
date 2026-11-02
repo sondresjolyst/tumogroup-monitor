@@ -1,7 +1,7 @@
 import { createSign } from 'node:crypto';
 import { unzipSync, strFromU8 } from 'fflate';
 import { redact } from '@/lib/redact';
-import type { ChecksState, RenovatePr, WorkflowRun } from '@/lib/model/types';
+import { MAIN_BRANCH, type ChecksState, type RenovatePr, type WorkflowRun } from '@/lib/model/types';
 
 const OWNER = 'sondresjolyst';
 const CONFIG_REPO = 'si-renovate-config';
@@ -276,6 +276,7 @@ export function createClient(env: ClientEnv): GitHubClient {
             return runs.map((run) => ({
                 id: run.id,
                 event: run.event,
+                headBranch: run.head_branch ?? null,
                 startedAt: run.run_started_at ?? run.created_at,
                 updatedAt: run.updated_at,
                 conclusion: run.conclusion,
@@ -287,7 +288,7 @@ export function createClient(env: ClientEnv): GitHubClient {
                 (run) =>
                     run.status === 'completed' &&
                     run.conclusion === 'success' &&
-                    run.head_branch === 'main' &&
+                    run.head_branch === MAIN_BRANCH &&
                     run.head_repository?.full_name === `${OWNER}/${CONFIG_REPO}`,
             );
             for (const run of runs) {

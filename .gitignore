@@ -3,8 +3,9 @@ node_modules/
 out/
 /job/
 build/
-.env
-.env.local
+.env*
 *.tsbuildinfo
 next-env.d.ts
 coverage/
+test-results/
+playwright-report/

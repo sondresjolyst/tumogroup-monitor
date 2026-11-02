@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fixture from './fixtures/report.json';
 import { parseReport } from '../report/schema';
 import { buildModel, runRows } from './build';
-import type { RenovatePr, WorkflowRun } from './types';
+import { MODEL_VERSION, type RenovatePr, type WorkflowRun } from './types';
 
 const report = parseReport(fixture);
 const now = new Date('2026-11-02T17:00:00Z');
@@ -12,6 +12,7 @@ const SUNDAY_AFTER = '2026-11-15T02:15:00.000Z';
 const run = (overrides: Partial<WorkflowRun> = {}): WorkflowRun => ({
     id: 1,
     event: 'schedule',
+    headBranch: 'main',
     startedAt: '2026-11-01T02:20:00Z',
     updatedAt: '2026-11-01T02:25:00Z',
     conclusion: 'success',
@@ -346,12 +347,16 @@ describe('buildModel runs and warnings', () => {
         expect(runRows([
             run({ id: 1 }),
             run({ id: 2, startedAt: '2026-11-02T09:32:55Z', updatedAt: '2026-11-02T09:36:10Z', conclusion: 'failure' }),
-            run({ id: 3, event: 'workflow_dispatch', startedAt: '2026-11-02T10:00:00Z', updatedAt: '2026-11-02T10:01:00Z', conclusion: null }),
+            run({ id: 3, event: 'workflow_dispatch', headBranch: 'example/test-branch', startedAt: '2026-11-02T10:00:00Z', updatedAt: '2026-11-02T10:01:00Z', conclusion: null }),
         ])).toEqual([
-            { id: 3, event: 'workflow_dispatch', plannedSlot: null, startedAt: '2026-11-02T10:00:00.000Z', durationMs: 60000, conclusion: null },
-            { id: 2, event: 'schedule', plannedSlot: '2026-11-02T02:15:00.000Z', startedAt: '2026-11-02T09:32:55.000Z', durationMs: 195000, conclusion: 'failure' },
-            { id: 1, event: 'schedule', plannedSlot: '2026-11-01T02:15:00.000Z', startedAt: '2026-11-01T02:20:00.000Z', durationMs: 300000, conclusion: 'success' },
+            { id: 3, event: 'workflow_dispatch', headBranch: 'example/test-branch', plannedSlot: null, startedAt: '2026-11-02T10:00:00.000Z', durationMs: 60000, conclusion: null },
+            { id: 2, event: 'schedule', headBranch: 'main', plannedSlot: '2026-11-02T02:15:00.000Z', startedAt: '2026-11-02T09:32:55.000Z', durationMs: 195000, conclusion: 'failure' },
+            { id: 1, event: 'schedule', headBranch: 'main', plannedSlot: '2026-11-01T02:15:00.000Z', startedAt: '2026-11-01T02:20:00.000Z', durationMs: 300000, conclusion: 'success' },
         ]);
+    });
+
+    it('the model carries its version', () => {
+        expect(build().modelVersion).toBe(MODEL_VERSION);
     });
 
     it('the stored model holds no run history, because the page reads runs from their own table', () => {

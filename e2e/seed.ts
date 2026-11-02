@@ -32,11 +32,12 @@ const prs = [
     pr('example-org/app-one', 44, 'renovate/python-3.x', 'A PR with no address', AUTOMERGE, 'none', ''),
 ];
 
-// The newest run is 33 hours old on the real clock, so the page must warn that the data is old.
+// The newest run on main is 33 hours old on the real clock, so the page must warn that the data is old.
 const seedTime = Date.now();
 const runs: WorkflowRun[] = [
-    { id: 9002, event: 'schedule', startedAt: new Date(seedTime - 33 * HOUR_MS).toISOString(), updatedAt: new Date(seedTime - 33 * HOUR_MS + 300_000).toISOString(), conclusion: 'success' },
-    { id: 9001, event: 'workflow_dispatch', startedAt: '2026-10-20T10:00:00Z', updatedAt: '2026-10-20T10:04:00Z', conclusion: 'failure' },
+    { id: 9003, event: 'workflow_dispatch', headBranch: 'example/test-branch', startedAt: new Date(seedTime - HOUR_MS).toISOString(), updatedAt: new Date(seedTime - HOUR_MS + 60_000).toISOString(), conclusion: 'failure' },
+    { id: 9002, event: 'schedule', headBranch: 'main', startedAt: new Date(seedTime - 33 * HOUR_MS).toISOString(), updatedAt: new Date(seedTime - 33 * HOUR_MS + 300_000).toISOString(), conclusion: 'success' },
+    { id: 9001, event: 'workflow_dispatch', headBranch: 'main', startedAt: '2026-10-20T10:00:00Z', updatedAt: '2026-10-20T10:04:00Z', conclusion: 'failure' },
 ];
 
 async function main() {
@@ -44,7 +45,7 @@ async function main() {
     try {
         await applySchema(pool);
         await upsertRuns(pool, runs);
-        const model = sanitizeModel(buildModel(parseReport(fixture), prs, [runs[1]], MODEL_TIME));
+        const model = sanitizeModel(buildModel(parseReport(fixture), prs, [runs[2]], MODEL_TIME));
         await saveSuccess(pool, model, 9002, new Date(seedTime - 33 * HOUR_MS));
     } finally {
         await pool.end();

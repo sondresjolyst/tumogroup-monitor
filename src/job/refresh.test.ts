@@ -9,7 +9,7 @@ const report = JSON.parse(readFileSync(new URL('../lib/model/fixtures/report.jso
 const now = new Date('2026-11-02T10:00:00Z');
 
 const runs: WorkflowRun[] = [
-    { id: 5, event: 'schedule', startedAt: '2026-11-01T02:00:00Z', updatedAt: '2026-11-01T02:20:00Z', conclusion: 'success' },
+    { id: 5, event: 'schedule', headBranch: 'main', startedAt: '2026-11-01T02:00:00Z', updatedAt: '2026-11-01T02:20:00Z', conclusion: 'success' },
 ];
 
 const oldModel = { counts: { needsApproval: 99 } } as unknown as PageModel;

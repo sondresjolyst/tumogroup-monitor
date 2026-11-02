@@ -1,6 +1,6 @@
 import { Alert } from '@sjolystinnovation/app-kit/ui';
 import type { LatestState } from '@/lib/db/store';
-import type { WorkflowRun } from '@/lib/model/types';
+import { MAIN_BRANCH, type WorkflowRun } from '@/lib/model/types';
 import { Board } from './Board';
 import { Header } from './Header';
 import { RunHistory } from './RunHistory';
@@ -33,7 +33,7 @@ export function RenovateView({ state, runs, now }: RenovateViewProps) {
     const model = state.model;
     return (
         <div className={pageClass}>
-            <Header latestRun={runs[0] ?? null} lastRefresh={state.lastSuccessAt} />
+            <Header latestRun={runs.find((run) => run.headBranch === MAIN_BRANCH) ?? null} lastRefresh={state.lastSuccessAt} />
             <main className={mainClass}>
                 <Warnings state={state} runs={runs} now={now} />
                 {model ? (
@@ -52,7 +52,7 @@ export function RenovateView({ state, runs, now }: RenovateViewProps) {
                         <RunHistory runs={runs} />
                     </>
                 ) : (
-                    <p className="text-sm">No data yet</p>
+                    <p className="text-sm">{state.modelOutdated ? 'Waiting for the next refresh.' : 'No data yet. The first refresh has not finished.'}</p>
                 )}
             </main>
         </div>

@@ -20,5 +20,7 @@ CREATE TABLE IF NOT EXISTS runs (
     conclusion text
 );
 
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS head_branch text;
+
 CREATE INDEX IF NOT EXISTS runs_started_at_idx ON runs (started_at DESC);
 `;

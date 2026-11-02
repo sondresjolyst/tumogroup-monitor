@@ -1,7 +1,7 @@
 import 'server-only';
 import { Pool } from 'pg';
 import type { WorkflowRun } from '@/lib/model/types';
-import { readLatest, readRuns, type LatestState } from './store';
+import { readPageState, type LatestState } from './store';
 
 /** More than the page shows, so the report's run is found in the list when the report is recent. */
 const RUNS_TO_READ = 200;
@@ -30,9 +30,7 @@ export interface PageData {
 /** Returns a null state when the database cannot be read. Error text can hold a connection string, so it is not logged. */
 export async function readPageData(): Promise<PageData> {
     try {
-        const current = getPool();
-        const [state, runs] = await Promise.all([readLatest(current), readRuns(current, RUNS_TO_READ)]);
-        return { state, runs };
+        return await readPageState(getPool(), RUNS_TO_READ);
     } catch (error) {
         const { name, code } = error as { name?: unknown; code?: unknown };
         console.error(`Could not read the database. name=${String(name)} code=${String(code)}`);

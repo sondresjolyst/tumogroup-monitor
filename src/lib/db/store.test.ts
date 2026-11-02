@@ -1,8 +1,8 @@
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { PageModel, WorkflowRun } from '@/lib/model/types';
+import { MODEL_VERSION, type PageModel, type WorkflowRun } from '@/lib/model/types';
 import { schemaSql } from './schema';
-import { applySchema, readLatest, readRuns, saveFailure, saveSuccess, upsertRuns } from './store';
+import { applySchema, readLatest, readPageState, readRuns, saveFailure, saveSuccess, upsertRuns } from './store';
 
 if (!process.env.TEST_DATABASE_URL) {
     throw new Error('TEST_DATABASE_URL is not set. Run these tests with npm run test:db.');
@@ -12,6 +12,7 @@ const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
 const pageRole = 'tumogroup_monitor_readonly';
 
 const model: PageModel = {
+    modelVersion: MODEL_VERSION,
     counts: { needsApproval: 1, cooldown: 2, waiting: 3, otherPrs: 4, noReleaseDate: 5, problems: 6 },
     needsApproval: [],
     cooldown: [],
@@ -24,6 +25,7 @@ const model: PageModel = {
 const run = (id: number, startedAt: string, conclusion: string | null = 'success'): WorkflowRun => ({
     id,
     event: 'schedule',
+    headBranch: 'main',
     startedAt,
     updatedAt: startedAt,
     conclusion,
@@ -56,17 +58,74 @@ describe('applySchema', () => {
         await applySchema(pool);
         expect((await readLatest(pool)).model).toEqual(model);
     });
+
+    it('adds the branch column to an older runs table and keeps its rows', async () => {
+        await pool.query('DROP TABLE runs');
+        await pool.query(
+            `CREATE TABLE runs (id bigint PRIMARY KEY, event text NOT NULL, started_at timestamptz NOT NULL, updated_at timestamptz NOT NULL, conclusion text)`,
+        );
+        await pool.query(`INSERT INTO runs VALUES (1, 'schedule', now(), now(), 'success')`);
+        await applySchema(pool);
+        expect((await readRuns(pool, 10)).map((r) => [r.id, r.headBranch])).toEqual([[1, null]]);
+        await upsertRuns(pool, [run(1, daysAgo(1))]);
+        expect((await readRuns(pool, 10))[0].headBranch).toBe('main');
+    });
 });
 
 describe('readLatest', () => {
     it('on an empty database returns nulls', async () => {
         expect(await readLatest(pool)).toEqual({
             model: null,
+            modelOutdated: false,
             reportRunId: null,
             lastSuccessAt: null,
             lastError: null,
             lastErrorAt: null,
         });
+    });
+
+    it.each([
+        ['no version', { counts: {} }],
+        ['another version', { ...model, modelVersion: MODEL_VERSION + 1 }],
+    ])('reads a stored model with %s as outdated, with no model', async (_name, stored) => {
+        await saveSuccess(pool, stored as unknown as PageModel, 42, new Date('2026-11-01T10:00:00Z'));
+        expect(await readLatest(pool)).toEqual({
+            model: null,
+            modelOutdated: true,
+            reportRunId: 42,
+            lastSuccessAt: new Date('2026-11-01T10:00:00Z'),
+            lastError: null,
+            lastErrorAt: null,
+        });
+    });
+});
+
+describe('readPageState', () => {
+    it('returns the state and runs', async () => {
+        await saveSuccess(pool, model, 42, new Date('2026-11-01T10:00:00Z'));
+        await upsertRuns(pool, [run(1, daysAgo(1))]);
+        const page = await readPageState(pool, 10);
+        expect(page.state?.model).toEqual(model);
+        expect(page.runs.map((r) => r.id)).toEqual([1]);
+    });
+
+    it('before the first refresh has made the tables, reads as an empty state, not a failure', async () => {
+        await pool.query('DROP TABLE current_state, runs');
+        expect(await readPageState(pool, 10)).toEqual({
+            state: { model: null, modelOutdated: false, reportRunId: null, lastSuccessAt: null, lastError: null, lastErrorAt: null },
+            runs: [],
+        });
+    });
+
+    it('still throws on other database errors', async () => {
+        const failing = { query: () => Promise.reject(Object.assign(new Error('denied'), { code: '42501' })) } as unknown as Pool;
+        await expect(readPageState(failing, 10)).rejects.toThrow('denied');
+    });
+
+    it('reads runs from a table the new job has not migrated yet', async () => {
+        await pool.query('ALTER TABLE runs DROP COLUMN head_branch');
+        await pool.query(`INSERT INTO runs VALUES (1, 'schedule', now(), now(), 'success')`);
+        expect((await readPageState(pool, 10)).runs.map((r) => [r.id, r.headBranch])).toEqual([[1, null]]);
     });
 });
 
@@ -76,6 +135,7 @@ describe('saveSuccess', () => {
         await saveSuccess(pool, model, 42, new Date('2026-11-01T10:00:00Z'));
         expect(await readLatest(pool)).toEqual({
             model,
+            modelOutdated: false,
             reportRunId: 42,
             lastSuccessAt: new Date('2026-11-01T10:00:00Z'),
             lastError: null,
@@ -89,6 +149,7 @@ describe('saveFailure', () => {
         await saveFailure(pool, 'boom', new Date('2026-11-01T11:00:00Z'));
         expect(await readLatest(pool)).toEqual({
             model: null,
+            modelOutdated: false,
             reportRunId: null,
             lastSuccessAt: null,
             lastError: 'boom',
@@ -107,6 +168,7 @@ describe('saveFailure', () => {
         await saveFailure(pool, 'boom', new Date('2026-11-01T11:00:00Z'));
         expect(await readLatest(pool)).toEqual({
             model,
+            modelOutdated: false,
             reportRunId: 42,
             lastSuccessAt: new Date('2026-11-01T10:00:00Z'),
             lastError: 'boom',
@@ -123,6 +185,14 @@ describe('upsertRuns', () => {
         const runs = await readRuns(pool, 10);
         expect(runs).toHaveLength(2);
         expect(runs.find((r) => r.id === 1)?.conclusion).toBe('failure');
+    });
+
+    it('stores the branch of a run, and null when it has none', async () => {
+        const started = daysAgo(1);
+        await upsertRuns(pool, [{ ...run(1, started), headBranch: 'example/test-branch' }, { ...run(2, started), headBranch: null }]);
+        const runs = await readRuns(pool, 10);
+        expect(runs.find((r) => r.id === 1)?.headBranch).toBe('example/test-branch');
+        expect(runs.find((r) => r.id === 2)?.headBranch).toBeNull();
     });
 
     it('deletes runs older than 90 days', async () => {

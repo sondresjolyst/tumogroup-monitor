@@ -9,6 +9,7 @@ import type { PageModel, PrRow, ProblemRow, UpdateRow } from './types';
 const report = JSON.parse(readFileSync(new URL('./fixtures/report.json', import.meta.url), 'utf8'));
 
 const emptyModel = (): PageModel => ({
+    modelVersion: 1,
     counts: { needsApproval: 0, cooldown: 0, waiting: 0, otherPrs: 0, noReleaseDate: 0, problems: 0 },
     needsApproval: [],
     cooldown: [],

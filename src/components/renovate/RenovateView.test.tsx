@@ -60,23 +60,46 @@ describe('RenovateView', () => {
         expect(screen.getByRole('banner').textContent).toContain('in progress');
     });
 
-    it('no model shows "No data yet", not an empty list', () => {
+    it('the header shows the latest run on main, not a newer branch run', () => {
+        const branchRun = workflowRun({ id: 502, event: 'workflow_dispatch', headBranch: 'example/test-branch', startedAt: '2026-11-02T10:00:00Z', updatedAt: '2026-11-02T10:01:00Z', conclusion: 'failure' });
+        show({ runs: [branchRun, workflowRun()] });
+        const banner = screen.getByRole('banner').textContent;
+        expect(banner).toContain('Mon 2 Nov 03:20, success');
+        expect(banner).not.toContain('failure');
+    });
+
+    it('the header says none recorded when no run was on main', () => {
+        show({ runs: [workflowRun({ headBranch: 'example/test-branch' }), workflowRun({ id: 503, headBranch: null })] });
+        expect(screen.getByRole('banner').textContent).toContain('Last run none recorded');
+    });
+
+    it('run history lists every run and marks the branch of a run that is not on main', () => {
+        const branchRun = workflowRun({ id: 502, event: 'workflow_dispatch', headBranch: 'example/test-branch', startedAt: '2026-11-02T10:00:00Z' });
+        show({ runs: [branchRun, workflowRun(), workflowRun({ id: 503, headBranch: null, startedAt: '2026-11-01T02:20:00Z' })] });
+        const rows = within(section('Run history')).getAllByRole('row').slice(1);
+        expect(rows).toHaveLength(3);
+        expect(rows[0].textContent).toContain('workflow_dispatch on example/test-branch');
+        expect(rows[1].textContent).not.toContain(' on ');
+        expect(rows[2].textContent).not.toContain(' on ');
+    });
+
+    it('no model shows the empty state, not an empty list', () => {
         show({ state: state({ model: null, lastSuccessAt: null }) });
-        expect(screen.getByText('No data yet')).toBeTruthy();
+        expect(screen.getByText('No data yet. The first refresh has not finished.')).toBeTruthy();
         expect(screen.queryAllByRole('heading', { level: 2 })).toEqual([]);
         expect(screen.queryByText(/nothing/i)).toBeNull();
     });
 
     it('no model with a failure shows the failure too', () => {
         show({ state: state({ model: null, lastSuccessAt: null, lastError: 'The Renovate report has an unexpected format at repositories.', lastErrorAt: hoursAgo(1) }) });
-        expect(screen.getByText('No data yet')).toBeTruthy();
+        expect(screen.getByText('No data yet. The first refresh has not finished.')).toBeTruthy();
         expect(screen.getByRole('alert').textContent).toContain('The Renovate report has an unexpected format at repositories.');
     });
 
     it('a database failure says so, and does not read as no data', () => {
         show({ state: null });
         expect(screen.getByRole('alert').textContent).toBe('The page cannot read the database.');
-        expect(screen.queryByText('No data yet')).toBeNull();
+        expect(screen.queryByText(/No data yet/)).toBeNull();
     });
 
     it('model with lastError shows the failure, the data age, and keeps all sections', () => {
@@ -96,12 +119,39 @@ describe('RenovateView', () => {
         expect(screen.getByText('Update vite to v9')).toBeTruthy();
     });
 
-    it('data older than 32 hours shows a warning, and 31 hours does not', () => {
-        const { unmount } = show({ state: state({ lastSuccessAt: hoursAgo(32.1) }) });
-        expect(screen.getByRole('status').textContent).toContain('The data is 32 hours old.');
+    it('a stored model of an older version says it waits for the next refresh', () => {
+        show({ state: state({ model: null, modelOutdated: true, lastSuccessAt: hoursAgo(0.5) }) });
+        expect(screen.getByText('Waiting for the next refresh.')).toBeTruthy();
+        expect(screen.queryByText(/No data yet/)).toBeNull();
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('a last success older than 1 hour shows a warning, because a dead job saves no failure', () => {
+        const { unmount } = show({ state: state({ lastSuccessAt: hoursAgo(1.1) }) });
+        expect(screen.getByRole('status').textContent).toBe('The data is 1 hour old. The refresh runs every 15 minutes, so the job may have stopped.');
         unmount();
-        show({ state: state({ lastSuccessAt: hoursAgo(31) }) });
+        show({ state: state({ lastSuccessAt: hoursAgo(1) }) });
         expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('a dead job warns with no usable model too', () => {
+        show({ state: state({ model: null, modelOutdated: true, lastSuccessAt: hoursAgo(3) }) });
+        expect(screen.getByRole('status').textContent).toContain('The data is 3 hours old.');
+    });
+
+    it('a report 31 hours old gives no warning when the refresh is recent', () => {
+        const reportRun = workflowRun({ id: 77, startedAt: hoursAgo(31).toISOString(), updatedAt: hoursAgo(31).toISOString() });
+        show({ state: state({ reportRunId: 77 }), runs: [reportRun] });
+        expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('an old report and a dead job each get a warning', () => {
+        const oldRun = workflowRun({ id: 77, startedAt: hoursAgo(33).toISOString(), updatedAt: hoursAgo(33).toISOString() });
+        show({ state: state({ reportRunId: 77, lastSuccessAt: hoursAgo(2) }), runs: [oldRun] });
+        const texts = screen.getAllByRole('status').map((item) => item.textContent);
+        expect(texts).toHaveLength(2);
+        expect(texts[0]).toContain('The data is 2 hours old.');
+        expect(texts[1]).toBe('The Renovate report is 33 hours old.');
     });
 
     it('a report older than 32 hours warns even when the refresh is recent', () => {

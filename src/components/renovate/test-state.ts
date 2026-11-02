@@ -1,5 +1,5 @@
 import type { LatestState } from '@/lib/db/store';
-import type { PageModel, PrRow, ProblemRow, UpdateRow, WorkflowRun } from '@/lib/model/types';
+import { MODEL_VERSION, type PageModel, type PrRow, type ProblemRow, type UpdateRow, type WorkflowRun } from '@/lib/model/types';
 
 export const NOW = new Date('2026-11-02T17:00:00Z');
 
@@ -45,6 +45,7 @@ export const problem = (overrides: Partial<ProblemRow> = {}): ProblemRow => ({
 export const workflowRun = (overrides: Partial<WorkflowRun> = {}): WorkflowRun => ({
     id: 501,
     event: 'schedule',
+    headBranch: 'main',
     startedAt: '2026-11-02T02:20:00Z',
     updatedAt: '2026-11-02T02:25:30Z',
     conclusion: 'success',
@@ -52,6 +53,7 @@ export const workflowRun = (overrides: Partial<WorkflowRun> = {}): WorkflowRun =
 });
 
 export const model = (overrides: Partial<PageModel> = {}): PageModel => ({
+    modelVersion: MODEL_VERSION,
     counts: { needsApproval: 0, cooldown: 0, waiting: 0, otherPrs: 0, noReleaseDate: 0, problems: 0 },
     needsApproval: [],
     cooldown: [],
@@ -64,6 +66,7 @@ export const model = (overrides: Partial<PageModel> = {}): PageModel => ({
 
 export const state = (overrides: Partial<LatestState> = {}): LatestState => ({
     model: model(),
+    modelOutdated: false,
     reportRunId: null,
     lastSuccessAt: hoursAgo(1),
     lastError: null,

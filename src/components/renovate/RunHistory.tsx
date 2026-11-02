@@ -1,6 +1,6 @@
 import { CONFIG_REPO_URL } from '@/lib/github/client';
 import { runRows } from '@/lib/model/build';
-import type { WorkflowRun } from '@/lib/model/types';
+import { MAIN_BRANCH, type WorkflowRun } from '@/lib/model/types';
 import { formatDuration, formatOslo, formatOsloTime } from './format';
 import { Cell, EmptyText, ExternalLink, Row, Section, Table } from './ui';
 
@@ -34,6 +34,7 @@ export function RunHistory({ runs }: { runs: WorkflowRun[] }) {
                             </Cell>
                             <Cell label="Event" labelHidden>
                                 {row.event}
+                                {row.headBranch && row.headBranch !== MAIN_BRANCH && ` on ${row.headBranch}`}
                             </Cell>
                         </Row>
                     ))}
