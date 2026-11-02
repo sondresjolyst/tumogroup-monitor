@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const name = 'tumogroup-monitor-test-db';
 const port = '54329';
@@ -26,6 +26,16 @@ if (started.status !== 0) {
 }
 
 let code = 1;
+let child = null;
+
+const stop = (signal) => {
+    child?.kill(signal);
+    cleanup();
+    process.exit(130);
+};
+process.on('SIGINT', () => stop('SIGINT'));
+process.on('SIGTERM', () => stop('SIGTERM'));
+
 try {
     let ready = false;
     for (let attempt = 0; attempt < 60 && !ready; attempt++) {
@@ -36,12 +46,14 @@ try {
     if (!ready) {
         console.error('Postgres did not become ready in time.');
     } else {
-        const run = spawnSync('npx', ['vitest', 'run', '--config', 'vitest.db.config.mts'], {
+        child = spawn(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', '--config', 'vitest.db.config.mts'], {
             stdio: 'inherit',
-            shell: true,
             env: { ...process.env, TEST_DATABASE_URL: url },
         });
-        code = run.status ?? 1;
+        code = await new Promise((resolve) => {
+            child.on('error', () => resolve(1));
+            child.on('close', (status) => resolve(status ?? 1));
+        });
     }
 } finally {
     cleanup();

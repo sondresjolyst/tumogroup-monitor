@@ -16,14 +16,26 @@ export async function applySchema(pool: Pool): Promise<void> {
 
 export async function saveSuccess(pool: Pool, model: PageModel, reportRunId: number, at: Date): Promise<void> {
     await pool.query(
-        `UPDATE current_state
-         SET model = $1::jsonb, report_run_id = $2, last_success_at = $3, last_error = NULL, last_error_at = NULL`,
+        `INSERT INTO current_state (id, model, report_run_id, last_success_at, last_error, last_error_at)
+         VALUES (true, $1::jsonb, $2, $3, NULL, NULL)
+         ON CONFLICT (id) DO UPDATE
+         SET model = EXCLUDED.model,
+             report_run_id = EXCLUDED.report_run_id,
+             last_success_at = EXCLUDED.last_success_at,
+             last_error = NULL,
+             last_error_at = NULL`,
         [JSON.stringify(model), reportRunId, at],
     );
 }
 
 export async function saveFailure(pool: Pool, message: string, at: Date): Promise<void> {
-    await pool.query('UPDATE current_state SET last_error = $1, last_error_at = $2', [message, at]);
+    await pool.query(
+        `INSERT INTO current_state (id, last_error, last_error_at)
+         VALUES (true, $1, $2)
+         ON CONFLICT (id) DO UPDATE
+         SET last_error = EXCLUDED.last_error, last_error_at = EXCLUDED.last_error_at`,
+        [message, at],
+    );
 }
 
 export async function upsertRuns(pool: Pool, runs: WorkflowRun[]): Promise<void> {

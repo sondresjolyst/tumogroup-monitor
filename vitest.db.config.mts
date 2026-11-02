@@ -5,7 +5,7 @@ export default defineConfig({
     test: {
         environment: 'node',
         globals: true,
-        include: ['src/lib/db/**/*.test.ts'],
+        include: ['src/lib/db/store.test.ts'],
         fileParallelism: false,
     },
     resolve: {

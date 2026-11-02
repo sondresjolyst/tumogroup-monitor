@@ -3,6 +3,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PageModel, WorkflowRun } from '@/lib/model/types';
 import { applySchema, readLatest, readRuns, saveFailure, saveSuccess, upsertRuns } from './store';
 
+if (!process.env.TEST_DATABASE_URL) {
+    throw new Error('TEST_DATABASE_URL is not set. Run these tests with npm run test:db.');
+}
+
 const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
 const pageRole = 'tumogroup_monitor_page';
 
@@ -80,6 +84,23 @@ describe('saveSuccess', () => {
 });
 
 describe('saveFailure', () => {
+    it('on a fresh database sets the error and leaves the model null', async () => {
+        await saveFailure(pool, 'boom', new Date('2026-11-01T11:00:00Z'));
+        expect(await readLatest(pool)).toEqual({
+            model: null,
+            reportRunId: null,
+            lastSuccessAt: null,
+            lastError: 'boom',
+            lastErrorAt: new Date('2026-11-01T11:00:00Z'),
+        });
+    });
+
+    it('still works if the seed row is missing', async () => {
+        await pool.query('DELETE FROM current_state');
+        await saveFailure(pool, 'boom', new Date('2026-11-01T11:00:00Z'));
+        expect((await readLatest(pool)).lastError).toBe('boom');
+    });
+
     it('keeps the last model', async () => {
         await saveSuccess(pool, model, 42, new Date('2026-11-01T10:00:00Z'));
         await saveFailure(pool, 'boom', new Date('2026-11-01T11:00:00Z'));
