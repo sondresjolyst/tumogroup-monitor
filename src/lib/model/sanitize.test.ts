@@ -15,9 +15,7 @@ const emptyModel = (): PageModel => ({
     waiting: [],
     otherPrs: [],
     problems: [],
-    runs: [],
     warnings: [],
-    latestRunAt: null,
 });
 
 const update = (sourceUrl: string | null): UpdateRow => ({
@@ -109,10 +107,11 @@ describe('sanitizeModel generic walk', () => {
     });
 
     it('redacts strings in any field, including new ones', () => {
-        const model = { ...emptyModel(), warnings: [{ kind: 'no-sunday-run', message: 'see ghs_Abcdefghijklmnop123' }] } as PageModel;
-        model.runs = [
-            { id: 1, event: 'ghs_Abcdefghijklmnop123', plannedSlot: null, startedAt: '2026-11-01T02:00:00.000Z', durationMs: 5, conclusion: null },
-        ];
+        const model = {
+            ...emptyModel(),
+            warnings: [{ kind: 'no-sunday-run', message: 'see ghs_Abcdefghijklmnop123' }],
+            newField: [{ text: 'ghs_Abcdefghijklmnop123', at: '2026-11-01T02:00:00.000Z' }],
+        } as PageModel;
         const text = JSON.stringify(sanitizeModel(model));
         expect(text).not.toContain('ghs_');
         expect(text).toContain('2026-11-01T02:00:00.000Z');

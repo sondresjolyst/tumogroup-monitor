@@ -18,6 +18,8 @@ const NO_DATE_LABEL = 'no-release-date';
 const PIN_TYPES = new Set(['pin', 'pinDigest']);
 const DIGEST_TYPES = new Set(['digest', 'pinDigest']);
 const EXPECTED_PROBLEM = /^Some release\(s\) did not have a releaseTimestamp/;
+/** The report can be a day older than the PR list, so these branches have had their PR even when none is open now. */
+const PR_DONE_RESULTS = new Set(['pr-created', 'pr-edited', 'done', 'automerged', 'already-existed']);
 
 const dateFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Oslo', dateStyle: 'medium' });
 
@@ -38,7 +40,6 @@ interface Candidate {
     end: Date | null;
     pending: boolean;
     noDate: boolean;
-    groupKey: string;
 }
 
 interface DatedUpdate {
@@ -101,6 +102,7 @@ function branchInfos(repository: ReportRepository): Map<string, BranchInfo> {
 }
 
 function candidates(repo: string, repository: ReportRepository, openBranches: Set<string>, now: Date): Candidate[] {
+    const prDone = new Set(repository.branches.filter((branch) => PR_DONE_RESULTS.has(branch.result ?? '')).map((branch) => branch.branchName));
     const seen = new Set<string>();
     const found: Candidate[] = [];
     for (const update of eachUpdate(repository)) {
@@ -112,6 +114,9 @@ function candidates(repo: string, repository: ReportRepository, openBranches: Se
         seen.add(key);
         const timestamp = effectiveTimestamp(update);
         const end = timestamp ? cooldownEnd(timestamp) : null;
+        const pending = update.pendingChecks === true && end !== null && end.getTime() > now.getTime();
+        // A pending update is not in the branch's PR, so it keeps its place in cooldown.
+        if (prDone.has(branch) && !pending) continue;
         found.push({
             repo,
             branch,
@@ -122,51 +127,36 @@ function candidates(repo: string, repository: ReportRepository, openBranches: Se
             releaseTimestamp: timestamp,
             end,
             noDate: isNoDate(update),
-            groupKey: update.branchName ?? `no-branch-${found.length}`,
-            pending: update.pendingChecks === true && end !== null && end.getTime() > now.getTime(),
+            pending,
         });
     }
     return found;
-}
-
-/**
- * Renovate drops pending updates from a group when any update in it is ready,
- * so a group is created on the first Sunday run after its first ready update.
- * With no ready update it waits for the earliest cooldown end.
- */
-function groupExpectedPr(group: Candidate[], now: Date): Date {
-    if (group.some((candidate) => !candidate.pending)) return nextSundayRun(now);
-    const earliest = Math.min(...group.map((candidate) => candidate.end!.getTime()));
-    return nextSundayRun(new Date(earliest));
 }
 
 function updateRows(report: Report, openBranches: Set<string>, now: Date) {
     const cooldown: UpdateRow[] = [];
     const waiting: UpdateRow[] = [];
     for (const [repo, repository] of Object.entries(report.repositories)) {
-        const groups = Map.groupBy(candidates(repo, repository, openBranches, now), (candidate) => candidate.groupKey);
-        for (const group of groups.values()) {
-            const expectedPr = groupExpectedPr(group, now).toISOString();
-            for (const candidate of group) {
-                const tags: Tag[] = [];
-                if (candidate.updateType === 'major') tags.push('Major');
-                if (candidate.noDate) tags.push('No release date');
-                const row: UpdateRow = {
-                    repo,
-                    branch: candidate.branch,
-                    dep: candidate.dep,
-                    newVersion: candidate.newVersion,
-                    updateType: candidate.updateType,
-                    sourceUrl: candidate.sourceUrl,
-                    dashboardIssue: repository.dependencyDashboardIssue ?? null,
-                    tags,
-                    releaseTimestamp: candidate.releaseTimestamp,
-                    cooldownEnd: candidate.end?.toISOString() ?? null,
-                    daysLeft: candidate.pending ? (candidate.end!.getTime() - now.getTime()) / DAY_MS : null,
-                    expectedPr,
-                };
-                (candidate.pending ? cooldown : waiting).push(row);
-            }
+        for (const candidate of candidates(repo, repository, openBranches, now)) {
+            const tags: Tag[] = [];
+            if (candidate.updateType === 'major') tags.push('Major');
+            if (candidate.noDate) tags.push('No release date');
+            const row: UpdateRow = {
+                repo,
+                branch: candidate.branch,
+                dep: candidate.dep,
+                newVersion: candidate.newVersion,
+                updateType: candidate.updateType,
+                sourceUrl: candidate.sourceUrl,
+                dashboardIssue: repository.dependencyDashboardIssue ?? null,
+                tags,
+                releaseTimestamp: candidate.releaseTimestamp,
+                cooldownEnd: candidate.end?.toISOString() ?? null,
+                daysLeft: candidate.pending ? (candidate.end!.getTime() - now.getTime()) / DAY_MS : null,
+                // Renovate drops pending updates from a ready branch, so a pending update never comes before its own cooldown ends.
+                expectedPr: nextSundayRun(candidate.pending ? candidate.end! : now).toISOString(),
+            };
+            (candidate.pending ? cooldown : waiting).push(row);
         }
     }
     const byName = (a: UpdateRow, b: UpdateRow) => a.repo.localeCompare(b.repo) || a.dep.localeCompare(b.dep);
@@ -278,10 +268,14 @@ function sundayWarnings(runs: WorkflowRun[], now: Date): Warning[] {
     const { start, end } = lastEndedSunday(now);
     const oldest = Math.min(...runs.map((run) => new Date(run.startedAt).getTime()));
     if (runs.length === 0 || oldest > start.getTime()) return [];
-    const starts = runs.filter((run) => run.event === 'schedule').map((run) => new Date(run.startedAt));
+    const scheduled = runs.filter((run) => run.event === 'schedule');
+    const starts = scheduled.map((run) => new Date(run.startedAt));
     const inWindow = (date: Date) => date >= start && date < end;
-    if (starts.some(inWindow)) return [];
     const sunday = dateFormat.format(start);
+    if (starts.some(inWindow)) {
+        if (scheduled.some((run) => run.conclusion === 'success' && inWindow(new Date(run.startedAt)))) return [];
+        return [{ kind: 'failed-sunday-run', message: `No scheduled run succeeded on Sunday ${sunday}.` }];
+    }
     if (starts.some((date) => date >= end && inWindow(plannedSlotBefore(date)))) {
         return [{ kind: 'late-sunday-run', message: `The scheduled run for Sunday ${sunday} started after the day had ended.` }];
     }
@@ -293,7 +287,6 @@ export function buildModel(report: Report, prs: RenovatePr[], runs: WorkflowRun[
     const { cooldown, waiting } = updateRows(report, openBranches, now);
     const { needsApproval, otherPrs } = prRows(report, prs);
     const problems = problemRows(report);
-    const runHistory = runRows(runs);
     const noReleaseDate = [...needsApproval, ...otherPrs, ...waiting].filter((row) => row.tags.includes('No release date')).length;
     return {
         counts: {
@@ -309,8 +302,6 @@ export function buildModel(report: Report, prs: RenovatePr[], runs: WorkflowRun[
         waiting,
         otherPrs,
         problems,
-        runs: runHistory,
         warnings: sundayWarnings(runs, now),
-        latestRunAt: runHistory[0]?.startedAt ?? null,
     };
 }

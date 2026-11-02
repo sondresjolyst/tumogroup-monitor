@@ -18,9 +18,7 @@ const model: PageModel = {
     waiting: [],
     otherPrs: [],
     problems: [],
-    runs: [],
     warnings: [],
-    latestRunAt: '2026-11-01T02:15:00.000Z',
 };
 
 const run = (id: number, startedAt: string, conclusion: string | null = 'success'): WorkflowRun => ({

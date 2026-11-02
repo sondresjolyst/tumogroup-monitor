@@ -58,9 +58,7 @@ export const model = (overrides: Partial<PageModel> = {}): PageModel => ({
     waiting: [],
     otherPrs: [],
     problems: [],
-    runs: [],
     warnings: [],
-    latestRunAt: null,
     ...overrides,
 });
 

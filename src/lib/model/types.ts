@@ -67,7 +67,7 @@ export interface RunRow {
     conclusion: string | null;
 }
 
-export type WarningKind = 'no-sunday-run' | 'late-sunday-run';
+export type WarningKind = 'no-sunday-run' | 'late-sunday-run' | 'failed-sunday-run';
 
 export interface Warning {
     kind: WarningKind;
@@ -90,7 +90,5 @@ export interface PageModel {
     waiting: UpdateRow[];
     otherPrs: PrRow[];
     problems: ProblemRow[];
-    runs: RunRow[];
     warnings: Warning[];
-    latestRunAt: string | null;
 }

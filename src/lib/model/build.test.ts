@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import fixture from './fixtures/report.json';
 import { parseReport } from '../report/schema';
-import { buildModel } from './build';
+import { buildModel, runRows } from './build';
 import type { RenovatePr, WorkflowRun } from './types';
 
 const report = parseReport(fixture);
 const now = new Date('2026-11-02T17:00:00Z');
 const NEXT_SUNDAY = '2026-11-08T02:15:00.000Z';
+const SUNDAY_AFTER = '2026-11-15T02:15:00.000Z';
 
 const run = (overrides: Partial<WorkflowRun> = {}): WorkflowRun => ({
     id: 1,
@@ -93,19 +94,25 @@ describe('buildModel updates', () => {
         expect(lodash).toHaveLength(1);
     });
 
-    it('group rule: a group shows each update own cooldown, and expectedPr uses the first update that has left cooldown, or the earliest cooldown end if none has', () => {
+    it('group rule: a pending row expects the first Sunday after its own cooldown end, and a ready row in the same branch the next Sunday', () => {
         const model = build();
         const vitest = row(model.cooldown, 'app-two', 'vitest');
         expect(vitest?.cooldownEnd).toBe('2026-11-08T08:00:00.000Z');
-        expect(vitest?.expectedPr).toBe(NEXT_SUNDAY);
+        expect(vitest?.expectedPr).toBe(SUNDAY_AFTER);
         expect(row(model.waiting, 'app-two', 'eslint')?.expectedPr).toBe(NEXT_SUNDAY);
 
         const npgsql = row(model.cooldown, 'app-two', 'Npgsql');
         const serilog = row(model.cooldown, 'app-two', 'Serilog');
         expect(npgsql?.cooldownEnd).toBe('2026-11-08T10:00:00.000Z');
         expect(serilog?.cooldownEnd).toBe('2026-11-06T10:00:00.000Z');
-        expect(npgsql?.expectedPr).toBe(NEXT_SUNDAY);
+        expect(npgsql?.expectedPr).toBe(SUNDAY_AFTER);
         expect(serilog?.expectedPr).toBe(NEXT_SUNDAY);
+    });
+
+    it('no cooldown row expects its PR before its cooldown ends', () => {
+        const rows = build().cooldown;
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.filter((update) => update.expectedPr < update.cooldownEnd!)).toEqual([]);
     });
 
     it('a lone update in cooldown past this Sunday expects the Sunday after its cooldown end', () => {
@@ -117,6 +124,37 @@ describe('buildModel updates', () => {
     it('sorts cooldown by cooldown end', () => {
         const ends = build().cooldown.map((r) => r.cooldownEnd);
         expect(ends).toEqual([...ends].sort());
+    });
+});
+
+describe('buildModel branch results', () => {
+    const OLD_UPDATE = { newVersion: '2.0.0', updateType: 'minor', releaseTimestamp: '2026-10-01T00:00:00Z', branchName: 'renovate/lib' };
+    const branchReport = (result: string | undefined, updates: Record<string, unknown>[] = [OLD_UPDATE]) =>
+        parseReport({
+            repositories: {
+                'example-org/app-nine': {
+                    status: 'onboarded',
+                    branches: [{ branchName: 'renovate/lib', result, upgrades: [] }],
+                    packageFiles: { npm: [{ deps: [{ depName: 'example-lib', updates }] }] },
+                },
+            },
+        });
+
+    it.each(['pr-created', 'pr-edited', 'done', 'automerged', 'already-existed'])('a branch with result %s and no open PR is not waiting', (result) => {
+        const model = buildModel(branchReport(result), [], [run()], now);
+        expect(model.waiting).toEqual([]);
+        expect(model.counts.waiting).toBe(0);
+    });
+
+    it.each(['not-scheduled', 'pending', 'not-allowed', undefined])('a branch with result %s and no open PR is waiting', (result) => {
+        expect(buildModel(branchReport(result), [], [run()], now).waiting).toHaveLength(1);
+    });
+
+    it('a pending update on a branch that already has its PR stays in cooldown', () => {
+        const pending = { ...OLD_UPDATE, releaseTimestamp: '2026-11-01T00:00:00Z', pendingChecks: true };
+        const model = buildModel(branchReport('done', [pending]), [], [run()], now);
+        expect(model.cooldown).toHaveLength(1);
+        expect(model.waiting).toEqual([]);
     });
 });
 
@@ -207,7 +245,7 @@ describe('buildModel robustness', () => {
         expect(model.needsApproval.map((r) => r.number).sort()).toEqual([1, 2]);
     });
 
-    it('updates with no branchName do not share one group', () => {
+    it('updates with no branchName still list on their own', () => {
         const raw = structuredClone(fixture) as unknown as { repositories: Record<string, { packageFiles: { npm: { deps: { updates: Record<string, unknown>[] }[] }[] } }> };
         const deps = raw.repositories['example-org/app-one'].packageFiles.npm[0].deps;
         for (const dep of deps) for (const update of dep.updates) delete update.branchName;
@@ -305,21 +343,46 @@ describe('buildModel runs and warnings', () => {
     });
 
     it('run rows show planned slot, actual start, duration, conclusion. Manual runs have no planned slot', () => {
-        const model = build([], [
+        expect(runRows([
             run({ id: 1 }),
             run({ id: 2, startedAt: '2026-11-02T09:32:55Z', updatedAt: '2026-11-02T09:36:10Z', conclusion: 'failure' }),
             run({ id: 3, event: 'workflow_dispatch', startedAt: '2026-11-02T10:00:00Z', updatedAt: '2026-11-02T10:01:00Z', conclusion: null }),
-        ]);
-        expect(model.runs).toEqual([
+        ])).toEqual([
             { id: 3, event: 'workflow_dispatch', plannedSlot: null, startedAt: '2026-11-02T10:00:00.000Z', durationMs: 60000, conclusion: null },
             { id: 2, event: 'schedule', plannedSlot: '2026-11-02T02:15:00.000Z', startedAt: '2026-11-02T09:32:55.000Z', durationMs: 195000, conclusion: 'failure' },
             { id: 1, event: 'schedule', plannedSlot: '2026-11-01T02:15:00.000Z', startedAt: '2026-11-01T02:20:00.000Z', durationMs: 300000, conclusion: 'success' },
         ]);
-        expect(model.latestRunAt).toBe('2026-11-02T10:00:00.000Z');
     });
 
-    it('has no latest run time without runs', () => {
-        expect(build([], []).latestRunAt).toBeNull();
+    it('the stored model holds no run history, because the page reads runs from their own table', () => {
+        expect(build()).not.toHaveProperty('runs');
+        expect(build()).not.toHaveProperty('latestRunAt');
+    });
+
+    it('warns when the only scheduled run on the last Oslo Sunday failed', () => {
+        const model = build([], [OLD_RUN, run({ conclusion: 'failure' })]);
+        expect(model.warnings.map((w) => w.kind)).toEqual(['failed-sunday-run']);
+        expect(model.warnings[0].message).toBe('No scheduled run succeeded on Sunday 1 Nov 2026.');
+    });
+
+    it('warns when no scheduled run on that Sunday concluded success', () => {
+        const model = build([], [OLD_RUN, run({ id: 2, conclusion: 'cancelled' }), run({ id: 3, startedAt: '2026-11-01T03:20:00Z', conclusion: null })]);
+        expect(model.warnings.map((w) => w.kind)).toEqual(['failed-sunday-run']);
+    });
+
+    it('does not warn when one scheduled run on that Sunday succeeded after another failed', () => {
+        const model = build([], [OLD_RUN, run({ id: 2, conclusion: 'failure' }), run({ id: 3, startedAt: '2026-11-01T03:20:00Z' })]);
+        expect(model.warnings).toEqual([]);
+    });
+
+    it('a successful manual run does not make up for a failed scheduled run', () => {
+        const model = build([], [OLD_RUN, run({ id: 2, conclusion: 'failure' }), run({ id: 3, event: 'workflow_dispatch' })]);
+        expect(model.warnings.map((w) => w.kind)).toEqual(['failed-sunday-run']);
+    });
+
+    it('a failed run gives no warning when the history does not reach back to before that Sunday', () => {
+        const model = build([], [run({ conclusion: 'failure' }), run({ id: 2, startedAt: '2026-11-02T09:32:55Z', updatedAt: '2026-11-02T09:40:00Z' })]);
+        expect(model.warnings).toEqual([]);
     });
 });
 
@@ -388,7 +451,7 @@ describe('buildModel digest updates and expected problems', () => {
                         { msg: 'Something else broke' },
                     ],
                     branches: [],
-                    packageFiles: {},
+                    packageFiles: { npm: [{ deps: [{ depName: 'example-package', updates: [] }] }] },
                 },
             },
         });
