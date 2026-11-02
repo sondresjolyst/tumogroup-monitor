@@ -12,6 +12,12 @@ interface CooldownGroup {
     tags: Tag[];
 }
 
+/** The end of a group as a time. A group with no end, or an end that cannot be read, sorts last. */
+function endTime(group: CooldownGroup): number {
+    const time = new Date(group.rows[0].cooldownEnd ?? NaN).getTime();
+    return Number.isNaN(time) ? Infinity : time;
+}
+
 /**
  * One group per update that reads the same in every repo. The dates are part of the key, because a
  * group row shows one cooldown end and one expected PR, and those must hold for every repo in it.
@@ -28,17 +34,13 @@ function groupRows(rows: UpdateRow[]): CooldownGroup[] {
                 tags: (['Major', 'No release date'] as const).filter((tag) => found.has(tag)),
             };
         })
-        .sort((a, b) => (a.rows[0].cooldownEnd ?? '').localeCompare(b.rows[0].cooldownEnd ?? '') || a.rows[0].dep.localeCompare(b.rows[0].dep));
+        .sort((a, b) => endTime(a) - endTime(b) || a.rows[0].dep.localeCompare(b.rows[0].dep));
 }
 
-function countText(groups: CooldownGroup[], shown: number, total: number): string {
-    const rows = groups.length;
-    const repos = new Set(groups.flatMap((group) => group.rows.map((row) => row.repo))).size;
-    const parts = [`${rows} rows`];
-    if (shown !== rows) parts.push(`${shown} updates`);
-    if (repos !== rows) parts.push(`${repos} repos`);
-    const text = parts.length === 1 ? String(rows) : parts.join(', ');
-    return shown === total ? text : `${text} of ${total} updates`;
+function countText(rows: number, shown: number, total: number): string {
+    if (shown !== total) return `${shown} of ${total} updates`;
+    if (shown === rows) return String(rows);
+    return `${shown} updates in ${rows} ${rows === 1 ? 'row' : 'rows'}`;
 }
 
 function Progress({ row, now }: { row: UpdateRow; now: number }) {
@@ -109,7 +111,7 @@ function GroupRow({ group, now, filtering }: { group: CooldownGroup; now: number
 export function Cooldown({ rows, total, now, filtering }: { rows: UpdateRow[]; total: number; now: number; filtering: boolean }) {
     const groups = groupRows(rows);
     return (
-        <Section id="cooldown" title="In cooldown" count={countText(groups, rows.length, total)}>
+        <Section id="cooldown" title="In cooldown" count={countText(groups.length, rows.length, total)}>
             {total === 0 ? (
                 <EmptyText>Nothing is in cooldown.</EmptyText>
             ) : rows.length === 0 ? (

@@ -331,7 +331,7 @@ describe('RenovateView', () => {
 
     describe('In cooldown', () => {
         const END = '2026-11-04T17:00:00.000Z';
-        const shared = { dep: 'equinor/ops-actions', newVersion: 'v9.44.0', cooldownEnd: END, sourceUrl: 'https://github.com/example-vendor/ops-actions' };
+        const shared = { dep: 'example-vendor/ops-actions', newVersion: 'v9.44.0', cooldownEnd: END, sourceUrl: 'https://github.com/example-vendor/ops-actions' };
         const inRepo = (name: string, overrides: Partial<UpdateRow> = {}) =>
             update({ ...shared, repo: `example-org/${name}`, branch: 'renovate/github-actions', ...overrides });
         const cooldownModel = (rows: UpdateRow[]) => state({ model: model({ cooldown: rows }) });
@@ -341,7 +341,7 @@ describe('RenovateView', () => {
             show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two'), inRepo('app-three')]) });
             const rows = bodyRows();
             expect(rows).toHaveLength(1);
-            expect(rows[0].textContent).toContain('equinor/ops-actions to v9.44.0');
+            expect(rows[0].textContent).toContain('example-vendor/ops-actions to v9.44.0');
             expect(rows[0].textContent).toContain('3 repos');
             expect(rows[0].textContent).toContain('2 days left');
             expect(rows[0].textContent).toContain('Expected Sun 8 Nov 03:15');
@@ -388,9 +388,20 @@ describe('RenovateView', () => {
             expect(rows[1].textContent).toContain('Expected Sun 15 Nov 03:15');
         });
 
-        it('the section count states rows, updates and repos when they differ', () => {
+        it('the section count states updates and rows when they differ', () => {
             show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two'), inRepo('app-three'), update()]) });
-            expect(section('In cooldown').querySelector('h2')?.textContent).toBe('In cooldown2 rows, 4 updates, 3 repos');
+            expect(section('In cooldown').querySelector('h2')?.textContent).toBe('In cooldown4 updates in 2 rows');
+        });
+
+        it('the section count handles a single group', () => {
+            show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two')]) });
+            expect(section('In cooldown').querySelector('h2')?.textContent).toBe('In cooldown2 updates in 1 row');
+        });
+
+        it('a filtered section count states only updates', () => {
+            show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two'), inRepo('tool-three'), update()]) });
+            fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'app-' } });
+            expect(section('In cooldown').querySelector('h2')?.textContent).toBe('In cooldown3 of 4 updates');
         });
 
         it('the section count is one number when nothing is grouped', () => {
@@ -415,9 +426,33 @@ describe('RenovateView', () => {
                 ]),
             });
             const text = bodyRows().map((row) => row.textContent);
-            expect(text[0]).toContain('equinor/ops-actions');
+            expect(text[0]).toContain('example-vendor/ops-actions');
             expect(text[1]).toContain('middle to');
             expect(text[2]).toContain('late to');
+        });
+
+        it('sorts by time, not by the text of the date', () => {
+            show({
+                state: cooldownModel([
+                    update({ dep: 'later', cooldownEnd: '2026-11-04T17:30:00Z' }),
+                    update({ dep: 'sooner', cooldownEnd: '2026-11-04T18:00:00+01:00' }),
+                ]),
+            });
+            const text = bodyRows().map((row) => row.textContent);
+            expect(text[0]).toContain('sooner to');
+            expect(text[1]).toContain('later to');
+        });
+
+        it('a row with no end sorts last', () => {
+            show({
+                state: cooldownModel([
+                    update({ dep: 'no-end', cooldownEnd: null }),
+                    update({ dep: 'with-end', cooldownEnd: '2026-11-06T17:00:00Z' }),
+                ]),
+            });
+            const text = bodyRows().map((row) => row.textContent);
+            expect(text[0]).toContain('with-end to');
+            expect(text[1]).toContain('no-end to');
         });
 
         it('the repo filter matches any repo in the group, and the row shows only that repo', () => {

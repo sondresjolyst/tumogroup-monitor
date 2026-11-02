@@ -10,11 +10,11 @@ The page needs these:
 - `NEXTAUTH_SECRET`: the key that signs the session cookie.
 - `NEXTAUTH_URL`: the public address of the page. In production it must start with `https://`, or every page except `/health` stays closed.
 - `ALLOWED_GITHUB_USER_ID`: the numeric GitHub user ID of the one account that may sign in. If it is missing or not only digits, nobody gets in.
-- `DATABASE_URL`: the connection string for the `tumogroup_monitor_readonly` role.
+- `DATABASE_URL`: the connection string for a read-only database login.
 
 The refresh job needs these:
 
-- `DATABASE_URL`: the connection string for the role that writes the state.
+- `DATABASE_URL`: the connection string for a read-write database login.
 - `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY`: the GitHub App that reads the repositories.
 - `GITHUB_API_URL`: optional, defaults to the public GitHub API.
 - `GITHUB_TIMEOUT_MS`: optional, the timeout for each GitHub request.
