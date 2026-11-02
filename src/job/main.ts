@@ -1,5 +1,10 @@
 import { main } from './refresh';
 
-void main(process.env).then((code) => {
-    process.exitCode = code;
-});
+main(process.env)
+    .then((code) => {
+        process.exitCode = code;
+    })
+    .catch(() => {
+        console.error('Job failed unexpectedly.');
+        process.exitCode = 1;
+    });

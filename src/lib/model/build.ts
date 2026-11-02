@@ -181,8 +181,11 @@ function prRows(report: Report, prs: RenovatePr[]) {
 
 function problemText(problem: unknown): string {
     if (typeof problem === 'string') return problem;
-    if (problem && typeof problem === 'object' && 'msg' in problem && typeof problem.msg === 'string') return problem.msg;
-    return JSON.stringify(problem);
+    if (problem && typeof problem === 'object') {
+        if ('msg' in problem && typeof problem.msg === 'string') return problem.msg;
+        if ('message' in problem && typeof problem.message === 'string') return problem.message;
+    }
+    return 'Renovate reported a problem';
 }
 
 function problemRows(report: Report): ProblemRow[] {

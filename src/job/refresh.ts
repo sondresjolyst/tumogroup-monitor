@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { GitHubError, createClient, redact, type GitHubClient } from '@/lib/github/client';
 import { applySchema, readRuns, saveFailure, saveSuccess, upsertRuns } from '@/lib/db/store';
 import { buildModel } from '@/lib/model/build';
+import { sanitizeModel } from '@/lib/model/sanitize';
 import type { PageModel, WorkflowRun } from '@/lib/model/types';
 import { ReportFormatError, parseReport } from '@/lib/report/schema';
 
@@ -49,9 +50,26 @@ export function safeMessage(error: unknown): string {
     } else if (error instanceof GitHubError) {
         message = `${error.message}.`;
     } else {
-        message = 'The refresh failed for an unexpected reason. See the job log.';
+        message = 'The refresh failed for an unexpected reason. See the job log for the error code.';
     }
     return redact(message);
+}
+
+const SAFE_TOKEN = /^[A-Za-z0-9_.-]{1,40}$/;
+
+const safeToken = (value: unknown): string | null => (typeof value === 'string' && SAFE_TOKEN.test(value) ? value : null);
+
+/** Names and codes only. The message of an error can hold connection strings, so it is never logged. */
+export function describeError(error: unknown): string {
+    if (!error || typeof error !== 'object') return 'error=unknown';
+    const record = error as { name?: unknown; code?: unknown; cause?: unknown };
+    const cause = record.cause && typeof record.cause === 'object' ? (record.cause as { code?: unknown }) : null;
+    const parts = [
+        ['name', safeToken(record.name)],
+        ['code', safeToken(record.code)],
+        ['cause', safeToken(cause?.code)],
+    ];
+    return parts.filter(([, value]) => value).map(([key, value]) => `${key}=${value}`).join(' ') || 'error=unknown';
 }
 
 export async function refresh(deps: RefreshDeps, now: Date): Promise<void> {
@@ -67,12 +85,12 @@ export async function refresh(deps: RefreshDeps, now: Date): Promise<void> {
         const report = parseReport(found.raw);
         const prs = await client.listOpenRenovatePrs();
         const runs = await store.readRuns(HISTORY_LIMIT);
-        const model = buildModel(report, prs, runs, now);
+        const model = sanitizeModel(buildModel(report, prs, runs, now));
         await store.saveSuccess(model, found.runId, now);
         log(`Saved the page model from report run ${found.runId} with ${prs.length} open pull requests.`);
     } catch (error) {
         const message = safeMessage(error);
-        log(`Refresh failed: ${message}`);
+        log(`Refresh failed: ${message} (${describeError(error)})`);
         try {
             await store.saveFailure(message, now);
         } catch {
@@ -94,20 +112,40 @@ export async function runJob(deps: RefreshDeps, now: Date): Promise<number> {
     }
 }
 
-export async function main(env: NodeJS.ProcessEnv): Promise<number> {
+export async function main(env: Record<string, string | undefined>, makeStore: (pool: Pool) => Store = createStore): Promise<number> {
     if (!env.DATABASE_URL) {
         console.error('DATABASE_URL is not set.');
         return 1;
     }
-    const pool = new Pool({ connectionString: env.DATABASE_URL, connectionTimeoutMillis: 30_000, statement_timeout: 60_000 });
-    pool.on('error', () => {});
+    let pool: Pool | null = null;
     try {
-        const client = createClient(env);
-        return await runJob({ client, store: createStore(pool) }, new Date());
+        pool = new Pool({
+            connectionString: env.DATABASE_URL,
+            connectionTimeoutMillis: 30_000,
+            statement_timeout: 60_000,
+            query_timeout: 60_000,
+        });
+        pool.on('error', () => {});
+        const store = makeStore(pool);
+        let client: GitHubClient;
+        try {
+            client = createClient(env);
+        } catch (error) {
+            const message = safeMessage(error);
+            console.error(`Job failed: ${message} (${describeError(error)})`);
+            try {
+                await store.applySchema();
+                await store.saveFailure(message, new Date());
+            } catch (saveError) {
+                console.error(`Could not save the failure message (${describeError(saveError)}).`);
+            }
+            return 1;
+        }
+        return await runJob({ client, store }, new Date());
     } catch (error) {
-        console.error(`Job failed: ${safeMessage(error)}`);
+        console.error(`Job failed (${describeError(error)}).`);
         return 1;
     } finally {
-        await pool.end();
+        await pool?.end().catch(() => {});
     }
 }

@@ -1,11 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { generateKeyPairSync } from 'node:crypto';
+import { createVerify, generateKeyPairSync } from 'node:crypto';
 import { zipSync, strToU8 } from 'fflate';
 
-export const fakeKey = generateKeyPairSync('rsa', { modulusLength: 2048 })
-    .privateKey.export({ type: 'pkcs8', format: 'pem' })
-    .toString();
+const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
+export const fakeKey = pair.privateKey.export({ type: 'pkcs1', format: 'pem' }).toString();
+const publicKey = pair.publicKey;
+export const fakeAppId = '123';
 
 export const fakeToken = 'ghs_FakeInstallationToken0123456789abcdef';
 
@@ -14,6 +15,12 @@ export interface FakeArtifact {
     name: string;
     expired: boolean;
     report?: unknown;
+    /** Zip entries by name, used instead of report. */
+    files?: Record<string, Uint8Array>;
+    /** A zip body sent as is. */
+    zipBytes?: Uint8Array;
+    /** Send the zip without a Content-Length header. */
+    chunked?: boolean;
 }
 
 export interface FakeRun {
@@ -24,6 +31,8 @@ export interface FakeRun {
     created_at: string;
     run_started_at: string;
     updated_at: string;
+    head_branch: string;
+    head_repository: { full_name: string };
     artifacts: FakeArtifact[];
 }
 
@@ -31,12 +40,16 @@ export interface FakeState {
     runs: FakeRun[];
     prPages: unknown[][];
     graphqlStatus: number;
+    graphqlErrors: unknown[] | null;
+    graphqlSearchNull: boolean;
+    cursorOverride: string | null | undefined;
+    issueCountOverride: number | null;
     hang: boolean;
     requests: string[];
 }
 
 export function newFakeState(): FakeState {
-    return { runs: [], prPages: [[]], graphqlStatus: 200, hang: false, requests: [] };
+    return { runs: [], prPages: [[]], graphqlStatus: 200, graphqlErrors: null, graphqlSearchNull: false, cursorOverride: undefined, issueCountOverride: null, hang: false, requests: [] };
 }
 
 export function fakeRun(id: number, artifacts: FakeArtifact[], overrides: Partial<FakeRun> = {}): FakeRun {
@@ -48,6 +61,8 @@ export function fakeRun(id: number, artifacts: FakeArtifact[], overrides: Partia
         created_at: '2026-11-01T02:00:00Z',
         run_started_at: '2026-11-01T02:00:00Z',
         updated_at: '2026-11-01T02:20:00Z',
+        head_branch: 'main',
+        head_repository: { full_name: 'sondresjolyst/si-renovate-config' },
         artifacts,
         ...overrides,
     };
@@ -80,6 +95,19 @@ const readBody = (req: IncomingMessage) =>
         req.on('end', () => resolve(data));
     });
 
+function authorized(req: IncomingMessage, pathname: string): boolean {
+    const header = req.headers.authorization ?? '';
+    if (!header.startsWith('Bearer ')) return false;
+    const bearer = header.slice('Bearer '.length);
+    if (!pathname.startsWith('/app/')) return bearer === fakeToken;
+    const [head, claims, signature] = bearer.split('.');
+    if (!head || !claims || !signature) return false;
+    const verifier = createVerify('RSA-SHA256').update(`${head}.${claims}`);
+    if (!verifier.verify(publicKey, Buffer.from(signature, 'base64url'))) return false;
+    const payload = JSON.parse(Buffer.from(claims, 'base64url').toString()) as { iss: string; exp: number };
+    return payload.iss === fakeAppId && payload.exp > Date.now() / 1000;
+}
+
 const repoPath = '/repos/sondresjolyst/si-renovate-config/actions';
 
 export async function startFakeGitHub(state: FakeState): Promise<{ url: string; server: Server }> {
@@ -87,6 +115,8 @@ export async function startFakeGitHub(state: FakeState): Promise<{ url: string; 
         const url = new URL(req.url ?? '/', 'http://localhost');
         state.requests.push(`${req.method} ${url.pathname}`);
         if (state.hang) return;
+        const isBlob = url.pathname.startsWith('/blob/');
+        if (!isBlob && !authorized(req, url.pathname)) return json(res, 401, { message: 'Bad credentials' });
         const allArtifacts = state.runs.flatMap((run) => run.artifacts);
         if (url.pathname === '/app/installations') {
             return json(res, 200, [
@@ -98,7 +128,9 @@ export async function startFakeGitHub(state: FakeState): Promise<{ url: string; 
             return json(res, 201, { token: fakeToken });
         }
         if (url.pathname === `${repoPath}/workflows/renovate.yml/runs`) {
-            return json(res, 200, { workflow_runs: state.runs });
+            return json(res, 200, {
+                workflow_runs: state.runs.map((run) => ({ ...run, artifacts: undefined })),
+            });
         }
         const artifactList = url.pathname.match(new RegExp(`^${repoPath}/runs/(\\d+)/artifacts$`));
         if (artifactList) {
@@ -119,8 +151,14 @@ export async function startFakeGitHub(state: FakeState): Promise<{ url: string; 
         const blob = url.pathname.match(/^\/blob\/(\d+)$/);
         if (blob) {
             const artifact = allArtifacts.find((candidate) => candidate.id === Number(blob[1]));
-            const zip = zipSync({ 'report.json': strToU8(JSON.stringify(artifact?.report ?? {})) });
+            const zip =
+                artifact?.zipBytes ??
+                zipSync(artifact?.files ?? { 'report.json': strToU8(JSON.stringify(artifact?.report ?? {})) });
             res.writeHead(200, { 'content-type': 'application/zip' });
+            if (artifact?.chunked) {
+                res.write(Buffer.from(zip));
+                return res.end();
+            }
             return res.end(Buffer.from(zip));
         }
         if (url.pathname === '/graphql') {
@@ -129,11 +167,20 @@ export async function startFakeGitHub(state: FakeState): Promise<{ url: string; 
                 res.writeHead(state.graphqlStatus, { 'content-type': 'text/plain' });
                 return res.end(`boom ${fakeToken}`);
             }
+            if (state.graphqlErrors) return json(res, 200, { data: null, errors: state.graphqlErrors });
+            if (state.graphqlSearchNull) return json(res, 200, { data: { search: null } });
             const index = body.variables.after === null ? 0 : Number(body.variables.after);
             const nodes = state.prPages[index] ?? [];
             const more = index + 1 < state.prPages.length;
+            const cursor = state.cursorOverride !== undefined ? state.cursorOverride : more ? String(index + 1) : null;
             return json(res, 200, {
-                data: { search: { nodes, pageInfo: { hasNextPage: more, endCursor: more ? String(index + 1) : null } } },
+                data: {
+                    search: {
+                        issueCount: state.issueCountOverride ?? state.prPages.reduce((sum, page) => sum + page.length, 0),
+                        nodes,
+                        pageInfo: { hasNextPage: more, endCursor: cursor },
+                    },
+                },
             });
         }
         json(res, 404, { message: 'not found' });

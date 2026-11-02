@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitHubError, type GitHubClient } from '@/lib/github/client';
 import { fakeKey, fakeToken } from '@/lib/github/fake-github';
 import type { PageModel, RenovatePr, WorkflowRun } from '@/lib/model/types';
-import { refresh, runJob, type RefreshDeps } from './refresh';
+import { main, refresh, runJob, type RefreshDeps } from './refresh';
 
 const report = JSON.parse(readFileSync(new URL('../lib/model/fixtures/report.json', import.meta.url), 'utf8'));
 const now = new Date('2026-11-02T10:00:00Z');
@@ -122,5 +122,48 @@ describe('runJob', () => {
             throw new Error('db down');
         });
         expect(await runJob(deps, now)).toBe(1);
+    });
+});
+
+describe('diagnosis and setup', () => {
+    const logged = () => JSON.stringify(vi.mocked(deps.log!).mock.calls);
+
+    it('logs the error code of a pg style error but not its message', async () => {
+        const error = Object.assign(new Error('password authentication failed for postgres://app:hunter2@db.example:5432/x'), {
+            code: '28P01',
+        });
+        deps.store.upsertRuns = vi.fn(async () => {
+            throw error;
+        });
+        await expect(refresh(deps, now)).rejects.toThrow();
+        expect(logged()).toContain('28P01');
+        expect(logged()).not.toContain('hunter2');
+        expect(logged()).not.toContain('postgres://');
+        expect(saved.error).not.toContain('hunter2');
+    });
+
+    it('logs the cause code of a failed fetch', async () => {
+        client.listRuns = vi.fn(async () => {
+            throw new Error('fetch failed https://u:hunter2@host', { cause: { code: 'ECONNREFUSED' } });
+        });
+        await expect(refresh(deps, now)).rejects.toThrow();
+        expect(logged()).toContain('ECONNREFUSED');
+        expect(logged()).not.toContain('hunter2');
+    });
+
+    it('sanitises links and free text on the success path', async () => {
+        const dirty = {
+            ...report,
+            problems: [{ msg: 'Cannot reach https://user:hunter2@registry.example/pkg' }],
+        };
+        client.downloadLatestReport = vi.fn(async () => ({ runId: 5, raw: dirty as unknown }));
+        await refresh(deps, now);
+        expect(JSON.stringify(saved.model)).not.toContain('hunter2');
+    });
+
+    it('saves a failure when the client cannot be created', async () => {
+        const code = await main({ DATABASE_URL: 'postgres://u:p@127.0.0.1:1/x', GITHUB_PRIVATE_KEY: fakeKey }, () => deps.store);
+        expect(code).toBe(1);
+        expect(saved.error).toBe('GITHUB_APP_ID is not set.');
     });
 });

@@ -1,5 +1,6 @@
 import { createSign } from 'node:crypto';
 import { unzipSync, strFromU8 } from 'fflate';
+import { redact } from '@/lib/redact';
 import type { ChecksState, RenovatePr, WorkflowRun } from '@/lib/model/types';
 
 const OWNER = 'sondresjolyst';
@@ -9,6 +10,10 @@ const REPORT_ARTIFACT = 'renovate-report';
 const PR_QUERY = `is:pr is:open author:app/sjolyst-innovation-renovate user:${OWNER}`;
 const DEFAULT_API_URL = 'https://api.github.com';
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_REPORT_BYTES = 100 * 1024 * 1024;
+const MAX_SEARCH_RESULTS = 1000;
+const REPORT_FILE = 'report.json';
 
 /** Reads GITHUB_APP_ID, GITHUB_PRIVATE_KEY, and optionally GITHUB_API_URL and GITHUB_TIMEOUT_MS. */
 export type ClientEnv = Record<string, string | undefined>;
@@ -31,18 +36,7 @@ export function normalizePrivateKey(value: string): string {
     return value.includes('\\n') ? value.replace(/\\n/g, '\n') : value;
 }
 
-const KEY_BLOCK = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g;
-const TOKEN = /\b(?:gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{5,})/g;
-const BASE64_LONG = /[A-Za-z0-9+/=]{40,}/g;
-
-/** Defence in depth. Messages should already be free of secrets. */
-export function redact(text: string): string {
-    return text
-        .replace(/\\n/g, '\n')
-        .replace(KEY_BLOCK, '[redacted key]')
-        .replace(TOKEN, '[redacted token]')
-        .replace(BASE64_LONG, '[redacted]');
-}
+export { redact };
 
 const base64url = (input: Buffer | string) => Buffer.from(input).toString('base64url');
 
@@ -79,12 +73,19 @@ interface PrNode {
 }
 
 interface SearchResponse {
-    data?: { search: { nodes: Array<PrNode | null>; pageInfo: { hasNextPage: boolean; endCursor: string | null } } };
-    errors?: unknown;
+    data?: {
+        search: {
+            issueCount: number;
+            nodes: Array<PrNode | null>;
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        } | null;
+    } | null;
+    errors?: Array<{ type?: string; message?: string }> | null;
 }
 
 const SEARCH = `query($query: String!, $after: String) {
   search(query: $query, type: ISSUE, first: 50, after: $after) {
+    issueCount
     nodes {
       ... on PullRequest {
         number title url headRefName createdAt body
@@ -104,6 +105,8 @@ interface RunsResponse {
         status: string;
         conclusion: string | null;
         created_at: string;
+        head_branch?: string | null;
+        head_repository?: { full_name?: string } | null;
         run_started_at?: string | null;
         updated_at: string;
     }>;
@@ -111,6 +114,36 @@ interface RunsResponse {
 
 interface ArtifactsResponse {
     artifacts: Array<{ id: number; name: string; expired: boolean }>;
+}
+
+function parseReportFile(bytes: Uint8Array): unknown {
+    let found = false;
+    let tooBig = false;
+    let files: Record<string, Uint8Array>;
+    try {
+        files = unzipSync(bytes, {
+            filter: (file) => {
+                if (file.name !== REPORT_FILE) return false;
+                found = true;
+                if (file.originalSize > MAX_REPORT_BYTES) {
+                    tooBig = true;
+                    return false;
+                }
+                return true;
+            },
+        });
+    } catch {
+        throw new GitHubError('The GitHub report artifact could not be unpacked');
+    }
+    if (tooBig) throw new GitHubError('The GitHub report artifact is too large once unpacked');
+    if (!found || !files[REPORT_FILE]) throw new GitHubError(`The GitHub report artifact has no ${REPORT_FILE}`);
+    const data = files[REPORT_FILE];
+    if (data.byteLength > MAX_REPORT_BYTES) throw new GitHubError('The GitHub report artifact is too large once unpacked');
+    try {
+        return JSON.parse(strFromU8(data)) as unknown;
+    } catch {
+        throw new GitHubError(`The GitHub ${REPORT_FILE} is not valid JSON`);
+    }
 }
 
 export function createClient(env: ClientEnv): GitHubClient {
@@ -197,7 +230,13 @@ export function createClient(env: ClientEnv): GitHubClient {
         },
 
         async downloadLatestReport() {
-            const runs = (await fetchRuns()).filter((run) => run.status === 'completed');
+            const runs = (await fetchRuns()).filter(
+                (run) =>
+                    run.status === 'completed' &&
+                    run.conclusion === 'success' &&
+                    run.head_branch === 'main' &&
+                    run.head_repository?.full_name === `${OWNER}/${CONFIG_REPO}`,
+            );
             for (const run of runs) {
                 const list = await request<ArtifactsResponse>(
                     'listing report artifacts',
@@ -211,22 +250,23 @@ export function createClient(env: ClientEnv): GitHubClient {
                     `${actions}/artifacts/${artifact.id}/zip`,
                     await installationToken(),
                     {},
-                    async (response) => new Uint8Array(await response.arrayBuffer()),
+                    async (response) => {
+                        if (Number(response.headers.get('content-length')) > MAX_DOWNLOAD_BYTES) {
+                            throw new GitHubError('The GitHub report artifact is too large');
+                        }
+                        const body = new Uint8Array(await response.arrayBuffer());
+                        if (body.byteLength > MAX_DOWNLOAD_BYTES) throw new GitHubError('The GitHub report artifact is too large');
+                        return body;
+                    },
                 );
-                try {
-                    const files = unzipSync(bytes);
-                    const names = Object.keys(files);
-                    const name = names.find((item) => item.endsWith('.json')) ?? names[0];
-                    return { runId: run.id, raw: JSON.parse(strFromU8(files[name])) as unknown };
-                } catch {
-                    throw new GitHubError('The GitHub report artifact could not be unpacked');
-                }
+                return { runId: run.id, raw: parseReportFile(bytes) };
             }
             return null;
         },
 
         async listOpenRenovatePrs() {
             const prs: RenovatePr[] = [];
+            const cursors = new Set<string>();
             let after: string | null = null;
             for (;;) {
                 const response: SearchResponse = await request<SearchResponse>(
@@ -235,11 +275,28 @@ export function createClient(env: ClientEnv): GitHubClient {
                     await installationToken(),
                     { method: 'POST', body: JSON.stringify({ query: SEARCH, variables: { query: PR_QUERY, after } }) },
                 );
-                if (!response.data) throw new GitHubError('GitHub pull request search returned an error');
-                const { nodes, pageInfo } = response.data.search;
-                for (const node of nodes) {
-                    if (!node?.number) continue;
-                    const state = node.commits?.nodes[0]?.commit.statusCheckRollup?.state;
+                if (response.errors && response.errors.length > 0) {
+                    const denied = response.errors.some(
+                        (item) => item.type === 'FORBIDDEN' || /not accessible by integration/i.test(item.message ?? ''),
+                    );
+                    throw new GitHubError(
+                        denied
+                            ? 'GitHub denied the pull request search. The GitHub App is missing read permissions'
+                            : 'GitHub pull request search returned errors',
+                    );
+                }
+                const search = response.data?.search;
+                if (!search || !Array.isArray(search.nodes) || typeof search.issueCount !== 'number') {
+                    throw new GitHubError('GitHub pull request search returned incomplete data');
+                }
+                if (search.issueCount > MAX_SEARCH_RESULTS) {
+                    throw new GitHubError(`GitHub pull request search matched more than ${MAX_SEARCH_RESULTS} results`);
+                }
+                for (const node of search.nodes) {
+                    if (!node?.number || !node.repository || !node.commits?.nodes) {
+                        throw new GitHubError('GitHub pull request search returned incomplete data');
+                    }
+                    const state = node.commits.nodes[0]?.commit.statusCheckRollup?.state;
                     prs.push({
                         repo: node.repository.nameWithOwner,
                         number: node.number,
@@ -252,8 +309,18 @@ export function createClient(env: ClientEnv): GitHubClient {
                         labels: (node.labels?.nodes ?? []).map((label) => label.name),
                     });
                 }
-                if (!pageInfo.hasNextPage || !pageInfo.endCursor) return prs;
-                after = pageInfo.endCursor;
+                const { hasNextPage, endCursor } = search.pageInfo;
+                if (!hasNextPage) {
+                    if (prs.length !== search.issueCount) {
+                        throw new GitHubError('GitHub pull request search returned incomplete data');
+                    }
+                    return prs;
+                }
+                if (!endCursor || cursors.has(endCursor)) {
+                    throw new GitHubError('GitHub pull request search returned a missing or repeated page cursor');
+                }
+                cursors.add(endCursor);
+                after = endCursor;
             }
         },
     };

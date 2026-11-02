@@ -1,7 +1,8 @@
 import type { Server } from 'node:http';
+import { strToU8 } from 'fflate';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createClient, normalizePrivateKey, redact } from './client';
-import { fakeKey, fakePrNode, fakeRun, fakeToken, newFakeState, startFakeGitHub, type FakeState } from './fake-github';
+import { fakeAppId, fakeKey, fakePrNode, fakeRun, fakeToken, newFakeState, startFakeGitHub, type FakeState } from './fake-github';
 
 let state: FakeState;
 let server: Server;
@@ -18,7 +19,7 @@ afterEach(async () => {
 });
 
 const client = (timeout = '2000') =>
-    createClient({ GITHUB_APP_ID: '123', GITHUB_PRIVATE_KEY: fakeKey, GITHUB_API_URL: url, GITHUB_TIMEOUT_MS: timeout });
+    createClient({ GITHUB_APP_ID: fakeAppId, GITHUB_PRIVATE_KEY: fakeKey, GITHUB_API_URL: url, GITHUB_TIMEOUT_MS: timeout });
 
 describe('listRuns', () => {
     it('maps workflow runs', async () => {
@@ -66,6 +67,102 @@ describe('downloadLatestReport', () => {
     });
 });
 
+describe('downloadLatestReport sources and size', () => {
+    const real = { id: 20, name: 'renovate-report', expired: false, report: { ok: true } };
+
+    it('skips branch runs, fork runs and failed runs', async () => {
+        const art = (id: number) => [{ id, name: 'renovate-report', expired: false, report: { id } }];
+        state.runs = [
+            fakeRun(5, art(50), { head_branch: 'feature' }),
+            fakeRun(4, art(40), { head_repository: { full_name: 'someone-else/si-renovate-config' } }),
+            fakeRun(3, art(30), { conclusion: 'failure' }),
+            fakeRun(2, [real]),
+        ];
+        expect(await client().downloadLatestReport()).toEqual({ runId: 2, raw: { ok: true } });
+    });
+
+    it('rejects a download over 20 MB by Content-Length', async () => {
+        const zipBytes = new Uint8Array(21 * 1024 * 1024);
+        state.runs = [fakeRun(1, [{ ...real, zipBytes }])];
+        await expect(client().downloadLatestReport()).rejects.toThrow(/too large/);
+    });
+
+    it('rejects a download over 20 MB by actual length when there is no Content-Length', async () => {
+        const zipBytes = new Uint8Array(21 * 1024 * 1024);
+        state.runs = [fakeRun(1, [{ ...real, zipBytes, chunked: true }])];
+        await expect(client().downloadLatestReport()).rejects.toThrow(/too large/);
+    });
+
+    it('fails by name when report.json is missing and does not use another file', async () => {
+        state.runs = [fakeRun(1, [{ ...real, files: { 'other.json': strToU8('{"a":1}') } }])];
+        await expect(client().downloadLatestReport()).rejects.toThrow(/no report\.json/);
+    });
+
+    it('rejects a report.json that inflates past 100 MB without inflating it', async () => {
+        const files = { 'report.json': new Uint8Array(101 * 1024 * 1024) };
+        state.runs = [fakeRun(1, [{ ...real, files }])];
+        await expect(client().downloadLatestReport()).rejects.toThrow(/too large/);
+    });
+});
+
+describe('listOpenRenovatePrs partial data', () => {
+    const fails = async (pattern: RegExp) => {
+        const error = await client().listOpenRenovatePrs().catch((caught: Error) => caught);
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toMatch(pattern);
+    };
+
+    it('fails when GraphQL returns errors', async () => {
+        state.graphqlErrors = [{ message: 'secret detail ' + fakeToken }];
+        await fails(/returned errors/);
+    });
+
+    it('fails with a plain message on a permission error', async () => {
+        state.graphqlErrors = [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }];
+        await fails(/denied.*permissions/);
+    });
+
+    it('fails when search is null', async () => {
+        state.graphqlSearchNull = true;
+        await fails(/incomplete/);
+    });
+
+    it('fails when a node is null', async () => {
+        state.prPages = [[fakePrNode(1, 'SUCCESS'), null]];
+        state.issueCountOverride = 2;
+        await fails(/incomplete/);
+    });
+
+    it('fails when commit data is null', async () => {
+        state.prPages = [[fakePrNode(1, 'SUCCESS', { commits: null })]];
+        await fails(/incomplete/);
+    });
+
+    it('fails when there is a next page and no cursor', async () => {
+        state.prPages = [[fakePrNode(1, 'SUCCESS')], [fakePrNode(2, 'SUCCESS')]];
+        state.cursorOverride = null;
+        await fails(/cursor/);
+    });
+
+    it('fails when the cursor repeats', async () => {
+        state.prPages = [[fakePrNode(1, 'SUCCESS')], [fakePrNode(2, 'SUCCESS')]];
+        state.cursorOverride = '0';
+        await fails(/cursor/);
+    });
+
+    it('fails when the issue count is over 1000', async () => {
+        state.prPages = [[fakePrNode(1, 'SUCCESS')]];
+        state.issueCountOverride = 1001;
+        await fails(/more than 1000/);
+    });
+
+    it('fails when the final count differs from the issue count', async () => {
+        state.prPages = [[fakePrNode(1, 'SUCCESS')]];
+        state.issueCountOverride = 3;
+        await fails(/incomplete/);
+    });
+});
+
 describe('listOpenRenovatePrs', () => {
     it('follows pagination and maps check states', async () => {
         state.prPages = [
@@ -108,7 +205,7 @@ describe('auth', () => {
         const escaped = fakeKey.replace(/\n/g, '\\n');
         expect(normalizePrivateKey(escaped)).toBe(fakeKey);
         state.runs = [fakeRun(7, [])];
-        const escapedClient = createClient({ GITHUB_APP_ID: '123', GITHUB_PRIVATE_KEY: escaped, GITHUB_API_URL: url });
+        const escapedClient = createClient({ GITHUB_APP_ID: fakeAppId, GITHUB_PRIVATE_KEY: escaped, GITHUB_API_URL: url });
         expect(await escapedClient.listRuns()).toHaveLength(1);
     });
 
@@ -125,12 +222,14 @@ describe('auth', () => {
 
 describe('redact', () => {
     it('removes tokens and key material', () => {
-        const text = `a ${fakeToken} b ${fakeKey} c ghp_abcdefghijklmnopqrstuvwxyz0123 d github_pat_11AAAA_bbbbCCCC`;
+        const text = `postgres://app:hunter2@db.example:5432/x https://u:p@ss@host/path a ${fakeToken} b ${fakeKey} c ghp_abcdefghijklmnopqrstuvwxyz0123 d github_pat_11AAAA_bbbbCCCC`;
         const result = redact(text);
         expect(result).not.toContain('ghs_');
         expect(result).not.toContain('ghp_');
         expect(result).not.toContain('github_pat_');
         expect(result).not.toContain('BEGIN');
         expect(result).not.toContain('MII');
+        expect(result).not.toContain('hunter2');
+        expect(result).not.toContain('p@ss');
     });
 });
