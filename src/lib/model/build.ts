@@ -16,6 +16,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const AUTOMERGE_LINE = /^[^\n]*?\*\*Automerge\*\*:[ \t]*([^\n]*)$/gm;
 const NO_DATE_LABEL = 'no-release-date';
 const PIN_TYPES = new Set(['pin', 'pinDigest']);
+const DIGEST_TYPES = new Set(['digest', 'pinDigest']);
+const EXPECTED_PROBLEM = /^Some release\(s\) did not have a releaseTimestamp/;
 
 const dateFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Oslo', dateStyle: 'medium' });
 
@@ -34,11 +36,32 @@ interface Candidate {
     releaseTimestamp: string | null;
     end: Date | null;
     pending: boolean;
+    noDate: boolean;
     groupKey: string;
 }
 
-function isNoDate(update: { updateType?: string | null; releaseTimestamp?: string | null }): boolean {
-    return !update.releaseTimestamp && !PIN_TYPES.has(update.updateType ?? '');
+interface DatedUpdate {
+    updateType?: string | null;
+    releaseTimestamp?: string | null;
+    pendingChecks?: boolean | null;
+    dep?: { currentVersionTimestamp?: string | null };
+}
+
+/**
+ * Renovate ages a digest update by the date of the ref's newest version,
+ * which the report holds as currentVersionTimestamp on the dependency.
+ */
+function effectiveTimestamp(update: DatedUpdate): string | null {
+    if (update.releaseTimestamp) return update.releaseTimestamp;
+    const type = update.updateType ?? '';
+    return DIGEST_TYPES.has(type) ? (update.dep?.currentVersionTimestamp ?? null) : null;
+}
+
+function isNoDate(update: DatedUpdate): boolean {
+    if (effectiveTimestamp(update)) return false;
+    const type = update.updateType ?? '';
+    if (DIGEST_TYPES.has(type) && update.pendingChecks === true) return true;
+    return !PIN_TYPES.has(type);
 }
 
 /** Renovate writes its own config line after the release notes, so only the last match counts. */
@@ -85,7 +108,8 @@ function candidates(repo: string, repository: ReportRepository, openBranches: Se
         const key = [branch, update.dep.depName, newVersion].join('\n');
         if (seen.has(key)) continue;
         seen.add(key);
-        const end = update.releaseTimestamp ? cooldownEnd(update.releaseTimestamp) : null;
+        const timestamp = effectiveTimestamp(update);
+        const end = timestamp ? cooldownEnd(timestamp) : null;
         found.push({
             repo,
             branch,
@@ -93,8 +117,9 @@ function candidates(repo: string, repository: ReportRepository, openBranches: Se
             newVersion,
             updateType: update.updateType ?? 'unknown',
             sourceUrl: update.dep.sourceUrl ?? null,
-            releaseTimestamp: update.releaseTimestamp ?? null,
+            releaseTimestamp: timestamp,
             end,
+            noDate: isNoDate(update),
             groupKey: update.branchName ?? `no-branch-${found.length}`,
             pending: update.pendingChecks === true && end !== null && end.getTime() > now.getTime(),
         });
@@ -123,7 +148,7 @@ function updateRows(report: Report, openBranches: Set<string>, now: Date) {
             for (const candidate of group) {
                 const tags: Tag[] = [];
                 if (candidate.updateType === 'major') tags.push('Major');
-                if (isNoDate(candidate)) tags.push('No release date');
+                if (candidate.noDate) tags.push('No release date');
                 const row: UpdateRow = {
                     repo,
                     branch: candidate.branch,
@@ -188,8 +213,10 @@ function problemText(problem: unknown): string {
     return 'Renovate reported a problem';
 }
 
+const isExpected = (problem: unknown) => EXPECTED_PROBLEM.test(problemText(problem));
+
 function problemRows(report: Report): ProblemRow[] {
-    const rows: ProblemRow[] = report.problems.map((problem) => ({
+    const rows: ProblemRow[] = report.problems.filter((problem) => !isExpected(problem)).map((problem) => ({
         kind: 'report',
         repo: null,
         subject: null,
@@ -200,6 +227,7 @@ function problemRows(report: Report): ProblemRow[] {
             rows.push({ kind: 'disabled', repo, subject: null, message: 'Renovate is disabled for this repository' });
         }
         for (const problem of repository.problems) {
+            if (isExpected(problem)) continue;
             rows.push({ kind: 'repo', repo, subject: null, message: problemText(problem) });
         }
         const seen = new Set<string>();

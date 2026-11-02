@@ -36,7 +36,19 @@ export interface FakeRun {
     artifacts: FakeArtifact[];
 }
 
+export interface FakeChecks {
+    runs: Array<{ status: string; conclusion: string | null }>;
+    status: { state: string; total_count: number };
+}
+
 export interface FakeState {
+    /** Check data by head sha. A sha without an entry has no checks. */
+    checks: Record<string, FakeChecks>;
+    checkPageSize: number;
+    checkDelayMs: number;
+    checksStatus: number;
+    inflight: number;
+    maxInflight: number;
     runs: FakeRun[];
     prPages: unknown[][];
     graphqlStatus: number;
@@ -49,7 +61,7 @@ export interface FakeState {
 }
 
 export function newFakeState(): FakeState {
-    return { runs: [], prPages: [[]], graphqlStatus: 200, graphqlErrors: null, graphqlSearchNull: false, cursorOverride: undefined, issueCountOverride: null, hang: false, requests: [] };
+    return { checks: {}, checkPageSize: 100, checkDelayMs: 0, checksStatus: 200, inflight: 0, maxInflight: 0, runs: [], prPages: [[]], graphqlStatus: 200, graphqlErrors: null, graphqlSearchNull: false, cursorOverride: undefined, issueCountOverride: null, hang: false, requests: [] };
 }
 
 export function fakeRun(id: number, artifacts: FakeArtifact[], overrides: Partial<FakeRun> = {}): FakeRun {
@@ -68,17 +80,17 @@ export function fakeRun(id: number, artifacts: FakeArtifact[], overrides: Partia
     };
 }
 
-export function fakePrNode(number: number, state: string | null, extra: Record<string, unknown> = {}) {
+export function fakePrNode(number: number, extra: Record<string, unknown> = {}) {
     return {
         number,
         title: `chore(deps): update dependency thing-${number}`,
         url: `https://github.com/example-org/app-one/pull/${number}`,
         headRefName: `renovate/thing-${number}`,
+        headRefOid: `sha${number}`,
         createdAt: '2026-10-30T06:00:00Z',
         body: 'body text',
         repository: { nameWithOwner: 'example-org/app-one' },
         labels: { nodes: [{ name: 'dependencies' }] },
-        commits: { nodes: [{ commit: { statusCheckRollup: state === null ? null : { state } } }] },
         ...extra,
     };
 }
@@ -161,8 +173,28 @@ export async function startFakeGitHub(state: FakeState): Promise<{ url: string; 
             }
             return res.end(Buffer.from(zip));
         }
+        const checkRoute = url.pathname.match(/^\/repos\/example-org\/app-one\/commits\/([^/]+)\/(check-runs|status)$/);
+        if (checkRoute) {
+            state.inflight++;
+            state.maxInflight = Math.max(state.maxInflight, state.inflight);
+            await new Promise((resolve) => setTimeout(resolve, state.checkDelayMs));
+            state.inflight--;
+            if (state.checksStatus !== 200) return json(res, state.checksStatus, { message: `boom ${fakeToken}` });
+            const checks = state.checks[checkRoute[1]] ?? { runs: [], status: { state: 'pending', total_count: 0 } };
+            if (checkRoute[2] === 'status') return json(res, 200, checks.status);
+            const page = Number(url.searchParams.get('page') ?? '1');
+            const slice = checks.runs.slice((page - 1) * state.checkPageSize, page * state.checkPageSize);
+            return json(res, 200, { total_count: checks.runs.length, check_runs: slice });
+        }
         if (url.pathname === '/graphql') {
-            const body = JSON.parse(await readBody(req)) as { variables: { after: string | null } };
+            const body = JSON.parse(await readBody(req)) as { query: string; variables: { after: string | null } };
+            // The real app has no Contents read, so commit data is refused for private repositories.
+            if (/commits|statusCheckRollup/.test(body.query)) {
+                return json(res, 200, {
+                    data: null,
+                    errors: [{ type: 'FORBIDDEN', message: 'Resource not accessible by integration' }],
+                });
+            }
             if (state.graphqlStatus !== 200) {
                 res.writeHead(state.graphqlStatus, { 'content-type': 'text/plain' });
                 return res.end(`boom ${fakeToken}`);

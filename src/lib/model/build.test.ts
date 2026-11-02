@@ -293,3 +293,78 @@ describe('buildModel runs and warnings', () => {
         expect(build([], []).latestRunAt).toBeNull();
     });
 });
+
+describe('buildModel digest updates and expected problems', () => {
+    const digestReport = (dep: Record<string, unknown>, update: Record<string, unknown>) =>
+        parseReport({
+            problems: [],
+            repositories: {
+                'example-org/app-nine': {
+                    status: 'onboarded',
+                    problems: [],
+                    branches: [],
+                    packageFiles: {
+                        dockerfile: [
+                            {
+                                deps: [
+                                    {
+                                        depName: 'example/base-image',
+                                        ...dep,
+                                        updates: [
+                                            {
+                                                updateType: 'pinDigest',
+                                                newValue: '1.2.3',
+                                                pendingChecks: true,
+                                                branchName: 'renovate/base-image-1.x',
+                                                ...update,
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+        });
+
+    it('digest update with pending checks is aged by the dependency version timestamp', () => {
+        const model = buildModel(
+            digestReport({ currentVersionTimestamp: '2026-11-01T18:54:48.000Z' }, {}),
+            [],
+            [run()],
+            now,
+        );
+        expect(model.cooldown).toHaveLength(1);
+        expect(model.cooldown[0].cooldownEnd).toBe('2026-11-08T18:54:48.000Z');
+        expect(model.cooldown[0].tags).toEqual([]);
+        expect(model.waiting).toHaveLength(0);
+    });
+
+    it('digest update with pending checks and no date waits with the No release date tag', () => {
+        const model = buildModel(digestReport({}, {}), [], [run()], now);
+        expect(model.cooldown).toHaveLength(0);
+        expect(model.waiting).toHaveLength(1);
+        expect(model.waiting[0].tags).toEqual(['No release date']);
+    });
+
+    it('drops the expected releaseTimestamp problems and keeps the others', () => {
+        const withProblems = parseReport({
+            problems: [],
+            repositories: {
+                'example-org/app-nine': {
+                    status: 'onboarded',
+                    problems: [
+                        { msg: 'Some release(s) did not have a releaseTimestamp (and so were not subject to minimumReleaseAge)' },
+                        { msg: 'Something else broke' },
+                    ],
+                    branches: [],
+                    packageFiles: {},
+                },
+            },
+        });
+        const model = buildModel(withProblems, [], [run()], now);
+        expect(model.problems.map((problem) => problem.message)).toEqual(['Something else broke']);
+        expect(model.counts.problems).toBe(1);
+    });
+});

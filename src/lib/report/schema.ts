@@ -14,6 +14,7 @@ const updateSchema = z.object({
 const depSchema = z.object({
     depName: z.string(),
     sourceUrl: z.string().nullish(),
+    currentVersionTimestamp: z.string().nullish(),
     isAbandoned: z.boolean().nullish(),
     deprecationMessage: z.string().nullish(),
     updates: list(updateSchema),

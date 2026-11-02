@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { strToU8 } from 'fflate';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createClient, normalizePrivateKey, redact } from './client';
+import { createClient, deriveChecks, normalizePrivateKey, redact } from './client';
 import { fakeAppId, fakeKey, fakePrNode, fakeRun, fakeToken, newFakeState, startFakeGitHub, type FakeState } from './fake-github';
 
 let state: FakeState;
@@ -128,48 +128,59 @@ describe('listOpenRenovatePrs partial data', () => {
     });
 
     it('fails when a node is null', async () => {
-        state.prPages = [[fakePrNode(1, 'SUCCESS'), null]];
+        state.prPages = [[fakePrNode(1), null]];
         state.issueCountOverride = 2;
         await fails(/incomplete/);
     });
 
-    it('fails when commit data is null', async () => {
-        state.prPages = [[fakePrNode(1, 'SUCCESS', { commits: null })]];
+    it('fails when the head commit is missing', async () => {
+        state.prPages = [[fakePrNode(1, { headRefOid: null })]];
         await fails(/incomplete/);
     });
 
     it('fails when there is a next page and no cursor', async () => {
-        state.prPages = [[fakePrNode(1, 'SUCCESS')], [fakePrNode(2, 'SUCCESS')]];
+        state.prPages = [[fakePrNode(1)], [fakePrNode(2)]];
         state.cursorOverride = null;
         await fails(/cursor/);
     });
 
     it('fails when the cursor repeats', async () => {
-        state.prPages = [[fakePrNode(1, 'SUCCESS')], [fakePrNode(2, 'SUCCESS')]];
+        state.prPages = [[fakePrNode(1)], [fakePrNode(2)]];
         state.cursorOverride = '0';
         await fails(/cursor/);
     });
 
     it('fails when the issue count is over 1000', async () => {
-        state.prPages = [[fakePrNode(1, 'SUCCESS')]];
+        state.prPages = [[fakePrNode(1)]];
         state.issueCountOverride = 1001;
         await fails(/more than 1000/);
     });
 
     it('fails when the final count differs from the issue count', async () => {
-        state.prPages = [[fakePrNode(1, 'SUCCESS')]];
+        state.prPages = [[fakePrNode(1)]];
         state.issueCountOverride = 3;
         await fails(/incomplete/);
     });
 });
 
 describe('listOpenRenovatePrs', () => {
-    it('follows pagination and maps check states', async () => {
+    const runs = (...conclusions: Array<string | null>) =>
+        conclusions.map((conclusion) => ({ status: conclusion === null ? 'in_progress' : 'completed', conclusion }));
+    const noStatus = { state: 'pending', total_count: 0 };
+
+    it('follows pagination and takes checks from the REST API', async () => {
         state.prPages = [
-            [fakePrNode(1, 'FAILURE'), fakePrNode(2, 'ERROR'), fakePrNode(3, 'PENDING')],
-            [fakePrNode(4, 'EXPECTED'), fakePrNode(5, 'SUCCESS')],
-            [fakePrNode(6, null, { body: null })],
+            [fakePrNode(1), fakePrNode(2), fakePrNode(3)],
+            [fakePrNode(4), fakePrNode(5)],
+            [fakePrNode(6, { body: null })],
         ];
+        state.checks = {
+            sha1: { runs: runs('success', 'failure'), status: noStatus },
+            sha2: { runs: [], status: { state: 'error', total_count: 1 } },
+            sha3: { runs: runs('success', null), status: noStatus },
+            sha4: { runs: [], status: { state: 'pending', total_count: 2 } },
+            sha5: { runs: runs('success', 'neutral', 'skipped'), status: { state: 'success', total_count: 1 } },
+        };
         const prs = await client().listOpenRenovatePrs();
         expect(prs.map((pr) => [pr.number, pr.checks])).toEqual([
             [1, 'failing'],
@@ -187,6 +198,42 @@ describe('listOpenRenovatePrs', () => {
         });
         expect(prs[5].body).toBeNull();
         expect(state.requests.filter((request) => request === 'POST /graphql')).toHaveLength(3);
+    });
+
+    it('never asks GraphQL for commit data, which private repositories refuse', async () => {
+        state.prPages = [[fakePrNode(1)]];
+        await expect(client().listOpenRenovatePrs()).resolves.toHaveLength(1);
+    });
+
+    it('follows check run pagination', async () => {
+        state.prPages = [[fakePrNode(1)]];
+        state.checkPageSize = 2;
+        state.checks = { sha1: { runs: runs('success', 'success', 'success', 'timed_out'), status: noStatus } };
+        expect((await client().listOpenRenovatePrs())[0].checks).toBe('failing');
+        expect(state.requests.filter((request) => request.endsWith('/check-runs')).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it.each(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'])('treats a %s check run as failing', async (conclusion) => {
+        state.prPages = [[fakePrNode(1)]];
+        state.checks = { sha1: { runs: runs('success', conclusion), status: noStatus } };
+        expect((await client().listOpenRenovatePrs())[0].checks).toBe('failing');
+    });
+
+    it('limits concurrent check requests', async () => {
+        state.prPages = [Array.from({ length: 20 }, (_, index) => fakePrNode(index + 1))];
+        state.checkDelayMs = 20;
+        await client().listOpenRenovatePrs();
+        expect(state.maxInflight).toBeGreaterThan(1);
+        expect(state.maxInflight).toBeLessThanOrEqual(5);
+    });
+
+    it('throws on a non 2xx check response without the body', async () => {
+        state.prPages = [[fakePrNode(1)]];
+        state.checksStatus = 500;
+        const error = await client().listOpenRenovatePrs().catch((caught: Error) => caught);
+        expect((error as Error).message).toMatch(/check/);
+        expect((error as Error).message).toMatch(/500/);
+        expect((error as Error).message).not.toContain('boom');
     });
 
     it('throws an error without the response body or token on a 500', async () => {
@@ -231,5 +278,20 @@ describe('redact', () => {
         expect(result).not.toContain('MII');
         expect(result).not.toContain('hunter2');
         expect(result).not.toContain('p@ss');
+    });
+});
+
+describe('deriveChecks', () => {
+    it('is none with no runs and an empty status, whatever its state says', () => {
+        expect(deriveChecks([], { state: 'pending', total_count: 0 })).toBe('none');
+    });
+    it('is pending for a pending status with contexts', () => {
+        expect(deriveChecks([], { state: 'pending', total_count: 1 })).toBe('pending');
+    });
+    it('is passing for neutral and skipped runs', () => {
+        expect(deriveChecks([{ status: 'completed', conclusion: 'neutral' }, { status: 'completed', conclusion: 'skipped' }], { state: 'pending', total_count: 0 })).toBe('passing');
+    });
+    it('is failing before pending', () => {
+        expect(deriveChecks([{ status: 'queued', conclusion: null }, { status: 'completed', conclusion: 'failure' }], { state: 'success', total_count: 1 })).toBe('failing');
     });
 });

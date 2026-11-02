@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseReport } from '@/lib/report/schema';
 import { buildModel } from './build';
+import { redact } from '@/lib/redact';
 import { safeUrl, sanitizeModel } from './sanitize';
 import type { PageModel, PrRow, ProblemRow, UpdateRow } from './types';
 
@@ -54,6 +55,13 @@ describe('safeUrl', () => {
         expect(safeUrl('not a url')).toBeNull();
         expect(safeUrl(null)).toBeNull();
     });
+
+    it('clears userinfo from an http url', () => {
+        const result = safeUrl('https://user:hunter2@example.org/path?x=1') ?? '';
+        expect(result).not.toContain('hunter2');
+        expect(result).not.toContain('user');
+        expect(result).toContain('example.org/path?x=1');
+    });
 });
 
 describe('sanitizeModel', () => {
@@ -89,5 +97,51 @@ describe('buildModel problem text', () => {
         const text = JSON.stringify(model);
         expect(text).not.toContain('hunter2');
         expect(model.problems.some((row) => row.message === 'Renovate reported a problem')).toBe(true);
+    });
+});
+
+describe('sanitizeModel generic walk', () => {
+    it('removes userinfo from a sourceUrl', () => {
+        const result = sanitizeModel({ ...emptyModel(), waiting: [update('https://u:hunter2@ok.example/x')] });
+        expect(result.waiting[0].sourceUrl).not.toContain('hunter2');
+    });
+
+    it('redacts strings in any field, including new ones', () => {
+        const model = { ...emptyModel(), warnings: [{ kind: 'no-sunday-run', message: 'see ghs_Abcdefghijklmnop123' }] } as PageModel;
+        model.runs = [
+            { id: 1, event: 'ghs_Abcdefghijklmnop123', plannedSlot: null, startedAt: '2026-11-01T02:00:00.000Z', durationMs: 5, conclusion: null },
+        ];
+        const text = JSON.stringify(sanitizeModel(model));
+        expect(text).not.toContain('ghs_');
+        expect(text).toContain('2026-11-01T02:00:00.000Z');
+    });
+
+    it('keeps dependency names, versions with digests and branch names', () => {
+        const digest = 'sha256:' + 'a'.repeat(64);
+        const row = { ...update(null), dep: 'example/base-image', newVersion: digest, branch: 'renovate/' + 'b'.repeat(60) };
+        const result = sanitizeModel({ ...emptyModel(), waiting: [row] });
+        expect(result.waiting[0]).toMatchObject({ dep: row.dep, newVersion: digest, branch: row.branch });
+    });
+
+    it('truncates long problem text', () => {
+        const problem: ProblemRow = { kind: 'repo', repo: null, subject: null, message: 'word '.repeat(400) };
+        const result = sanitizeModel({ ...emptyModel(), problems: [problem] });
+        expect(result.problems[0].message.length).toBeLessThanOrEqual(503);
+    });
+});
+
+describe('redact bounds', () => {
+    it('returns fast on hostile input', () => {
+        const hostile = ['a://' + 'x'.repeat(200_000), 'a://'.repeat(50_000), 'a'.repeat(200_000) + '://@', '-----BEGIN PRIVATE KEY-----'.repeat(5_000)];
+        for (const text of hostile) {
+            const start = performance.now();
+            redact(text);
+            expect(performance.now() - start).toBeLessThan(500);
+        }
+    });
+
+    it('does not run past 512 characters of userinfo', () => {
+        const long = 'postgres://' + 'u'.repeat(600) + '@host/db';
+        expect(redact(long)).toContain('@host/db');
     });
 });

@@ -52,24 +52,40 @@ function appJwt(appId: string, privateKey: string, nowMs: number): string {
     }
 }
 
-const checksStates: Record<string, ChecksState> = {
-    FAILURE: 'failing',
-    ERROR: 'failing',
-    PENDING: 'pending',
-    EXPECTED: 'pending',
-    SUCCESS: 'passing',
-};
+const FAILED_CONCLUSIONS = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure']);
+const CHECK_CONCURRENCY = 5;
+const MAX_CHECK_PAGES = 20;
+
+export interface CheckRun {
+    status: string;
+    conclusion: string | null;
+}
+
+export interface CombinedStatus {
+    state: string;
+    total_count: number;
+}
+
+/** Combines check runs and the commit status into one state. The status state reads pending when it has no contexts. */
+export function deriveChecks(runs: CheckRun[], status: CombinedStatus): ChecksState {
+    if (runs.some((run) => run.conclusion !== null && FAILED_CONCLUSIONS.has(run.conclusion))) return 'failing';
+    if (status.total_count > 0 && (status.state === 'failure' || status.state === 'error')) return 'failing';
+    if (runs.some((run) => run.status !== 'completed')) return 'pending';
+    if (status.total_count > 0 && status.state === 'pending') return 'pending';
+    if (runs.length > 0 || status.total_count > 0) return 'passing';
+    return 'none';
+}
 
 interface PrNode {
     number: number;
     title: string;
     url: string;
     headRefName: string;
+    headRefOid: string | null;
     createdAt: string;
     body: string | null;
     repository: { nameWithOwner: string };
     labels: { nodes: Array<{ name: string }> } | null;
-    commits: { nodes: Array<{ commit: { statusCheckRollup: { state: string } | null } }> } | null;
 }
 
 interface SearchResponse {
@@ -88,10 +104,9 @@ const SEARCH = `query($query: String!, $after: String) {
     issueCount
     nodes {
       ... on PullRequest {
-        number title url headRefName createdAt body
+        number title url headRefName headRefOid createdAt body
         repository { nameWithOwner }
         labels(first: 20) { nodes { name } }
-        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
       }
     }
     pageInfo { hasNextPage endCursor }
@@ -114,6 +129,24 @@ interface RunsResponse {
 
 interface ArtifactsResponse {
     artifacts: Array<{ id: number; name: string; expired: boolean }>;
+}
+
+/** Runs the work for every item with at most `limit` calls at once. The first failure stops the rest. */
+async function mapLimited<T>(items: T[], limit: number, work: (item: T, index: number) => Promise<void>): Promise<void> {
+    let next = 0;
+    let failed = false;
+    const worker = async () => {
+        while (!failed && next < items.length) {
+            const index = next++;
+            try {
+                await work(items[index], index);
+            } catch (error) {
+                failed = true;
+                throw error;
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
 function parseReportFile(bytes: Uint8Array): unknown {
@@ -217,6 +250,25 @@ export function createClient(env: ClientEnv): GitHubClient {
         return response.workflow_runs;
     }
 
+    async function fetchChecks(repo: string, sha: string): Promise<ChecksState> {
+        const base = `/repos/${repo}/commits/${sha}`;
+        const runs: CheckRun[] = [];
+        for (let page = 1; page <= MAX_CHECK_PAGES; page++) {
+            const response = await request<{ total_count: number; check_runs: CheckRun[] }>(
+                'check run lookup',
+                `${base}/check-runs?per_page=100&page=${page}`,
+                await installationToken(),
+            );
+            if (!Array.isArray(response.check_runs)) throw new GitHubError('GitHub check run lookup returned incomplete data');
+            runs.push(...response.check_runs);
+            if (response.check_runs.length === 0 || runs.length >= response.total_count) break;
+            if (page === MAX_CHECK_PAGES) throw new GitHubError('GitHub check run lookup returned too many pages');
+        }
+        const status = await request<CombinedStatus>('commit status lookup', `${base}/status`, await installationToken());
+        if (typeof status.total_count !== 'number') throw new GitHubError('GitHub commit status lookup returned incomplete data');
+        return deriveChecks(runs, status);
+    }
+
     return {
         async listRuns() {
             const runs = await fetchRuns();
@@ -267,6 +319,7 @@ export function createClient(env: ClientEnv): GitHubClient {
         async listOpenRenovatePrs() {
             const prs: RenovatePr[] = [];
             const cursors = new Set<string>();
+            const heads: string[] = [];
             let after: string | null = null;
             for (;;) {
                 const response: SearchResponse = await request<SearchResponse>(
@@ -293,10 +346,10 @@ export function createClient(env: ClientEnv): GitHubClient {
                     throw new GitHubError(`GitHub pull request search matched more than ${MAX_SEARCH_RESULTS} results`);
                 }
                 for (const node of search.nodes) {
-                    if (!node?.number || !node.repository || !node.commits?.nodes) {
+                    if (!node?.number || !node.repository || !node.headRefOid || !/^[A-Za-z0-9]+$/.test(node.headRefOid)) {
                         throw new GitHubError('GitHub pull request search returned incomplete data');
                     }
-                    const state = node.commits.nodes[0]?.commit.statusCheckRollup?.state;
+                    heads.push(node.headRefOid);
                     prs.push({
                         repo: node.repository.nameWithOwner,
                         number: node.number,
@@ -305,7 +358,7 @@ export function createClient(env: ClientEnv): GitHubClient {
                         branch: node.headRefName,
                         createdAt: node.createdAt,
                         body: node.body ?? null,
-                        checks: (state ? checksStates[state] : undefined) ?? 'none',
+                        checks: 'none',
                         labels: (node.labels?.nodes ?? []).map((label) => label.name),
                     });
                 }
@@ -314,6 +367,9 @@ export function createClient(env: ClientEnv): GitHubClient {
                     if (prs.length !== search.issueCount) {
                         throw new GitHubError('GitHub pull request search returned incomplete data');
                     }
+                    await mapLimited(prs, CHECK_CONCURRENCY, async (pr, index) => {
+                        pr.checks = await fetchChecks(pr.repo, heads[index]);
+                    });
                     return prs;
                 }
                 if (!endCursor || cursors.has(endCursor)) {

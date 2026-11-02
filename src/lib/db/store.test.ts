@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PageModel, WorkflowRun } from '@/lib/model/types';
+import { schemaSql } from './schema';
 import { applySchema, readLatest, readRuns, saveFailure, saveSuccess, upsertRuns } from './store';
 
 if (!process.env.TEST_DATABASE_URL) {
@@ -38,6 +39,8 @@ beforeAll(async () => {
             IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${pageRole}') THEN CREATE ROLE ${pageRole}; END IF;
         END $$`,
     );
+    // The bootstrap script does this in production. The schema itself names no role.
+    await pool.query(`ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO ${pageRole}`);
 });
 
 beforeEach(async () => {
@@ -143,6 +146,10 @@ describe('readRuns', () => {
 });
 
 describe('page role', () => {
+    it('schema names no role', () => {
+        expect(schemaSql).not.toMatch(/GRANT/i);
+    });
+
     it('can read', async () => {
         await saveSuccess(pool, model, 1, new Date());
         const client = await pool.connect();
