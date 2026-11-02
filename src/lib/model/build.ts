@@ -13,7 +13,7 @@ import type {
 } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const AUTOMERGE_ENABLED = /\*\*Automerge\*\*:\s*Enabled/;
+const AUTOMERGE_LINE = /^[^\n]*?\*\*Automerge\*\*:[ \t]*([^\n]*)$/gm;
 const NO_DATE_LABEL = 'no-release-date';
 const PIN_TYPES = new Set(['pin', 'pinDigest']);
 
@@ -34,10 +34,17 @@ interface Candidate {
     releaseTimestamp: string | null;
     end: Date | null;
     pending: boolean;
+    groupKey: string;
 }
 
-function isNoDate(update: { updateType: string; releaseTimestamp?: string | null }): boolean {
-    return !update.releaseTimestamp && !PIN_TYPES.has(update.updateType);
+function isNoDate(update: { updateType?: string | null; releaseTimestamp?: string | null }): boolean {
+    return !update.releaseTimestamp && !PIN_TYPES.has(update.updateType ?? '');
+}
+
+/** Renovate writes its own config line after the release notes, so only the last match counts. */
+function automergeEnabled(body: string | null | undefined): boolean {
+    const matches = [...(body ?? '').matchAll(AUTOMERGE_LINE)];
+    return matches.at(-1)?.[1].startsWith('Enabled') ?? false;
 }
 
 function* eachUpdate(repository: ReportRepository) {
@@ -84,10 +91,11 @@ function candidates(repo: string, repository: ReportRepository, openBranches: Se
             branch,
             dep: update.dep.depName,
             newVersion,
-            updateType: update.updateType,
+            updateType: update.updateType ?? 'unknown',
             sourceUrl: update.dep.sourceUrl ?? null,
             releaseTimestamp: update.releaseTimestamp ?? null,
             end,
+            groupKey: update.branchName ?? `no-branch-${found.length}`,
             pending: update.pendingChecks === true && end !== null && end.getTime() > now.getTime(),
         });
     }
@@ -109,7 +117,7 @@ function updateRows(report: Report, openBranches: Set<string>, now: Date) {
     const cooldown: UpdateRow[] = [];
     const waiting: UpdateRow[] = [];
     for (const [repo, repository] of Object.entries(report.repositories)) {
-        const groups = Map.groupBy(candidates(repo, repository, openBranches, now), (candidate) => candidate.branch);
+        const groups = Map.groupBy(candidates(repo, repository, openBranches, now), (candidate) => candidate.groupKey);
         for (const group of groups.values()) {
             const expectedPr = groupExpectedPr(group, now).toISOString();
             for (const candidate of group) {
@@ -161,7 +169,7 @@ function prRows(report: Report, prs: RenovatePr[]) {
             checks: pr.checks,
             tags,
         };
-        (AUTOMERGE_ENABLED.test(pr.body) ? otherPrs : needsApproval).push(row);
+        (automergeEnabled(pr.body) ? otherPrs : needsApproval).push(row);
     }
     const failing = (row: PrRow) => (row.checks === 'failing' ? 0 : 1);
     const major = (row: PrRow) => (row.tags.includes('Major') ? 0 : 1);
@@ -233,6 +241,8 @@ function runRows(runs: WorkflowRun[]): RunRow[] {
 
 function sundayWarnings(runs: WorkflowRun[], now: Date): Warning[] {
     const { start, end } = lastEndedSunday(now);
+    const oldest = Math.min(...runs.map((run) => new Date(run.startedAt).getTime()));
+    if (runs.length === 0 || oldest > start.getTime()) return [];
     const starts = runs.filter((run) => run.event === 'schedule').map((run) => new Date(run.startedAt));
     const inWindow = (date: Date) => date >= start && date < end;
     if (starts.some(inWindow)) return [];

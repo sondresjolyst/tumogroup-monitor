@@ -9,7 +9,7 @@ export interface RenovatePr {
     url: string;
     branch: string;
     createdAt: string;
-    body: string;
+    body: string | null;
     checks: ChecksState;
     labels: string[];
 }

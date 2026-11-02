@@ -1,43 +1,46 @@
 import { z } from 'zod';
 
+const list = <T extends z.ZodType>(item: T) => z.array(item).nullish().transform((value) => value ?? []);
+
 const updateSchema = z.object({
-    updateType: z.string(),
-    newVersion: z.string().optional(),
-    newValue: z.string().optional(),
-    branchName: z.string().optional(),
-    releaseTimestamp: z.string().optional(),
-    pendingChecks: z.boolean().optional(),
+    updateType: z.string().nullish(),
+    newVersion: z.string().nullish(),
+    newValue: z.string().nullish(),
+    branchName: z.string().nullish(),
+    releaseTimestamp: z.string().nullish(),
+    pendingChecks: z.boolean().nullish(),
 });
 
 const depSchema = z.object({
     depName: z.string(),
-    sourceUrl: z.string().optional(),
-    isAbandoned: z.boolean().optional(),
-    deprecationMessage: z.string().optional(),
-    updates: z.array(updateSchema).default([]),
+    sourceUrl: z.string().nullish(),
+    isAbandoned: z.boolean().nullish(),
+    deprecationMessage: z.string().nullish(),
+    updates: list(updateSchema),
 });
 
 const packageFileSchema = z.object({
-    deps: z.array(depSchema).default([]),
+    deps: list(depSchema),
 });
 
 const branchSchema = z.object({
     branchName: z.string(),
-    upgrades: z
-        .array(z.object({ updateType: z.string().optional() }))
-        .default([]),
+    upgrades: list(z.object({ updateType: z.string().nullish() })),
 });
 
 const repositorySchema = z.object({
     status: z.string(),
-    problems: z.array(z.unknown()).default([]),
+    problems: list(z.unknown()),
     dependencyDashboardIssue: z.number().nullish(),
-    branches: z.array(branchSchema),
-    packageFiles: z.record(z.string(), z.array(packageFileSchema)),
+    branches: list(branchSchema),
+    packageFiles: z
+        .record(z.string(), list(packageFileSchema))
+        .nullish()
+        .transform((value) => value ?? {}),
 });
 
 const reportSchema = z.object({
-    problems: z.array(z.unknown()).default([]),
+    problems: list(z.unknown()),
     repositories: z.record(z.string(), repositorySchema),
 });
 

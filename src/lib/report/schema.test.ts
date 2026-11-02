@@ -32,6 +32,42 @@ describe('parseReport', () => {
         }
     });
 
+    it('tolerates null problems', () => {
+        const report = parseReport({ ...fixture, problems: null });
+        expect(report.problems).toEqual([]);
+    });
+
+    it('tolerates a repository with no branches', () => {
+        const report = parseReport({ repositories: { 'a/b': { status: 'onboarded', packageFiles: {} } } });
+        expect(report.repositories['a/b'].branches).toEqual([]);
+    });
+
+    it('tolerates null and missing lists and a null releaseTimestamp', () => {
+        const report = parseReport({
+            repositories: {
+                'a/b': {
+                    status: 'onboarded',
+                    problems: null,
+                    branches: [{ branchName: 'x', upgrades: null }],
+                    packageFiles: {
+                        npm: [{ deps: [{ depName: 'd', updates: [{ releaseTimestamp: null, pendingChecks: null }] }, { depName: 'e' }] }],
+                    },
+                },
+            },
+        });
+        const deps = report.repositories['a/b'].packageFiles.npm[0].deps;
+        expect(deps[0].updates[0].releaseTimestamp).toBeNull();
+        expect(deps[1].updates).toEqual([]);
+        expect(report.repositories['a/b'].branches[0].upgrades).toEqual([]);
+    });
+
+    it('accepts an update with no updateType', () => {
+        const report = parseReport({
+            repositories: { 'a/b': { status: 'onboarded', branches: [], packageFiles: { npm: [{ deps: [{ depName: 'd', updates: [{}] }] }] } } },
+        });
+        expect(report.repositories['a/b'].packageFiles.npm[0].deps[0].updates[0].updateType).toBeUndefined();
+    });
+
     it('throws when the report is not an object', () => {
         expect(() => parseReport('nope')).toThrow(ReportFormatError);
     });

@@ -33,6 +33,8 @@ const pr = (overrides: Partial<RenovatePr> = {}): RenovatePr => ({
 const AUTOMERGE_BODY = 'Schedule text\n\n\u{1F6A6} **Automerge**: Enabled.\n\n♻ **Rebasing**: Whenever PR becomes conflicted';
 const MANUAL_BODY = '\u{1F6A6} **Automerge**: Disabled by config. Please merge this manually once you are satisfied.';
 
+const OLD_RUN = run({ id: 9, startedAt: '2026-10-30T02:20:00Z', updatedAt: '2026-10-30T02:25:00Z' });
+
 const build = (prs: RenovatePr[] = [], runs: WorkflowRun[] = [run()]) => buildModel(report, prs, runs, now);
 const row = <T extends { dep: string; repo: string }>(rows: T[], repo: string, dep: string) =>
     rows.find((candidate) => candidate.repo === `example-org/${repo}` && candidate.dep === dep);
@@ -172,6 +174,48 @@ describe('buildModel pull requests', () => {
     });
 });
 
+describe('buildModel robustness', () => {
+    it('release notes in the PR body cannot hide the config line', () => {
+        const body = ['### Release notes', '', '**Automerge**: Enabled', '', '---', '', MANUAL_BODY, ''].join('\n');
+        const model = build([pr({ body })]);
+        expect(model.needsApproval).toHaveLength(1);
+        expect(model.otherPrs).toEqual([]);
+    });
+
+    it('an unclear or null body goes to needsApproval', () => {
+        const model = build([pr({ number: 1, body: null }), pr({ number: 2, body: '**Automerge**: ' })]);
+        expect(model.needsApproval.map((r) => r.number).sort()).toEqual([1, 2]);
+    });
+
+    it('updates with no branchName do not share one group', () => {
+        const raw = structuredClone(fixture) as unknown as { repositories: Record<string, { packageFiles: { npm: { deps: { updates: Record<string, unknown>[] }[] }[] } }> };
+        const deps = raw.repositories['example-org/app-one'].packageFiles.npm[0].deps;
+        for (const dep of deps) for (const update of dep.updates) delete update.branchName;
+        const model = buildModel(parseReport(raw), [], [run()], now);
+        const apex = row(model.cooldown, 'app-one', 'apexcharts');
+        expect(apex?.expectedPr).toBe(NEXT_SUNDAY);
+        expect(row(model.waiting, 'app-one', 'fluxcd/flux2')).toBeDefined();
+        expect(row(model.cooldown, 'app-one', 'typescript')?.expectedPr).toBe(NEXT_SUNDAY);
+    });
+
+    it('an update inside the cooldown window without pendingChecks goes to waiting', () => {
+        const raw = structuredClone(fixture) as unknown as { repositories: Record<string, { packageFiles: { npm: { deps: { depName: string; updates: Record<string, unknown>[] }[] }[] } }> };
+        const apex = raw.repositories['example-org/app-one'].packageFiles.npm[0].deps.find((dep) => dep.depName === 'apexcharts');
+        delete apex?.updates[0].pendingChecks;
+        const model = buildModel(parseReport(raw), [], [run()], now);
+        expect(row(model.waiting, 'app-one', 'apexcharts')?.daysLeft).toBeNull();
+        expect(row(model.cooldown, 'app-one', 'apexcharts')).toBeUndefined();
+    });
+
+    it('an update with no updateType still lists', () => {
+        const raw = structuredClone(fixture) as unknown as { repositories: Record<string, { packageFiles: { npm: { deps: { depName: string; updates: Record<string, unknown>[] }[] }[] } }> };
+        const flux = raw.repositories['example-org/app-one'].packageFiles.npm[0].deps.find((dep) => dep.depName === 'fluxcd/flux2');
+        delete flux?.updates[0].updateType;
+        const model = buildModel(parseReport(raw), [], [run()], now);
+        expect(row(model.waiting, 'app-one', 'fluxcd/flux2')?.updateType).toBe('unknown');
+    });
+});
+
 describe('buildModel problems and counts', () => {
     it('problems include isAbandoned deps, deprecated deps, repo problems, and repos with status "disabled"', () => {
         const problems = build().problems;
@@ -200,18 +244,27 @@ describe('buildModel problems and counts', () => {
 
 describe('buildModel runs and warnings', () => {
     it('warning when no schedule run started on the last Oslo Sunday', () => {
-        const model = build([], [run({ id: 2, startedAt: '2026-11-02T09:32:55Z', updatedAt: '2026-11-02T09:40:00Z' })]);
+        const model = build([], [OLD_RUN, run({ id: 2, startedAt: '2026-11-02T09:32:55Z', updatedAt: '2026-11-02T09:40:00Z' })]);
         expect(model.warnings.map((w) => w.kind)).toEqual(['no-sunday-run']);
     });
 
     it('warning when a Sunday schedule run started after that Sunday ended', () => {
-        const model = build([], [run({ startedAt: '2026-11-01T23:30:00Z', updatedAt: '2026-11-01T23:40:00Z' })]);
+        const model = build([], [OLD_RUN, run({ startedAt: '2026-11-01T23:30:00Z', updatedAt: '2026-11-01T23:40:00Z' })]);
         expect(model.warnings.map((w) => w.kind)).toEqual(['late-sunday-run']);
     });
 
     it('a manual run on Sunday does not count as the schedule run', () => {
-        const model = build([], [run({ event: 'workflow_dispatch' })]);
+        const model = build([], [OLD_RUN, run({ event: 'workflow_dispatch' })]);
         expect(model.warnings.map((w) => w.kind)).toEqual(['no-sunday-run']);
+    });
+
+    it('no warning without any runs', () => {
+        expect(build([], []).warnings).toEqual([]);
+    });
+
+    it('no warning when the run history does not reach back to the last Sunday', () => {
+        const model = build([], [run({ id: 2, startedAt: '2026-11-02T09:32:55Z', updatedAt: '2026-11-02T09:40:00Z' })]);
+        expect(model.warnings).toEqual([]);
     });
 
     it('no warning for a run 7h 17m late on a Monday', () => {
