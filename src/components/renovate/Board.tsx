@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { PageModel } from '@/lib/model/types';
 import { Cooldown } from './Cooldown';
-import { NO_FILTER, isFiltering, matchesPr, matchesProblem, matchesUpdate } from './filter';
+import { NO_FILTER, isFiltering, matchesCooldown, matchesPr, matchesProblem, matchesUpdate } from './filter';
 import { Filters } from './Filters';
 import { NeedsApproval } from './NeedsApproval';
 import { OtherPrs } from './OtherPrs';
@@ -28,7 +28,7 @@ export function Board({ rows, now }: { rows: BoardRows; now: number }) {
         <>
             <Filters repos={repos} filter={filter} onChange={setFilter} />
             <NeedsApproval rows={rows.needsApproval.filter((row) => matchesPr(filter, row))} total={rows.needsApproval.length} now={now} />
-            <Cooldown rows={rows.cooldown.filter((row) => matchesUpdate(filter, row))} total={rows.cooldown.length} now={now} />
+            <Cooldown rows={rows.cooldown.filter((row) => matchesCooldown(filter, row))} total={rows.cooldown.length} now={now} filtering={isFiltering(filter)} />
             <WaitingForSunday rows={rows.waiting.filter((row) => matchesUpdate(filter, row))} total={rows.waiting.length} filtering={isFiltering(filter)} />
             <OtherPrs rows={rows.otherPrs.filter((row) => matchesPr(filter, row))} total={rows.otherPrs.length} now={now} />
             <Problems rows={rows.problems.filter((row) => matchesProblem(filter, row))} total={rows.problems.length} />

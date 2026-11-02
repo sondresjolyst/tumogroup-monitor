@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { RenovateView, type RenovateViewProps } from './RenovateView';
+import type { UpdateRow } from '@/lib/model/types';
 import { NOW, hoursAgo, model, pr, problem, state, update, workflowRun } from './test-state';
 
 const SECTIONS = ['Needs your approval', 'In cooldown', 'Waiting for Sunday', 'Other open PRs', 'Problems', 'Run history'];
@@ -26,7 +27,7 @@ const fullModel = () =>
         ],
         cooldown: [
             update({ tags: ['Major'] }),
-            update({ repo: 'example-org/app-two', dep: 'eslint', newVersion: '10.0.1', branch: 'renovate/eslint', dashboardIssue: 7 }),
+            update({ repo: 'example-org/app-two', dep: 'eslint', newVersion: '10.0.1', branch: 'renovate/eslint', dashboardIssue: 7, cooldownEnd: '2026-11-07T17:00:00Z' }),
         ],
         waiting: [
             update({ dep: 'rxjs', newVersion: '7.8.2', branch: 'renovate/pin-dependencies', cooldownEnd: null, daysLeft: null, releaseTimestamp: null }),
@@ -69,12 +70,12 @@ describe('RenovateView', () => {
     it('no model with a failure shows the failure too', () => {
         show({ state: state({ model: null, lastSuccessAt: null, lastError: 'The Renovate report has an unexpected format at repositories.', lastErrorAt: hoursAgo(1) }) });
         expect(screen.getByText('No data yet')).toBeTruthy();
-        expect(screen.getByRole('status').textContent).toContain('The Renovate report has an unexpected format at repositories.');
+        expect(screen.getByRole('alert').textContent).toContain('The Renovate report has an unexpected format at repositories.');
     });
 
     it('a database failure says so, and does not read as no data', () => {
         show({ state: null });
-        expect(screen.getByText('The page cannot read the database.')).toBeTruthy();
+        expect(screen.getByRole('alert').textContent).toBe('The page cannot read the database.');
         expect(screen.queryByText('No data yet')).toBeNull();
     });
 
@@ -87,7 +88,8 @@ describe('RenovateView', () => {
                 lastErrorAt: hoursAgo(1),
             }),
         });
-        const warning = screen.getByRole('status');
+        const warning = screen.getByRole('alert');
+        expect(screen.queryByRole('status')).toBeNull();
         expect(warning.textContent).toContain('No Renovate report artifact was found');
         expect(warning.textContent).toContain('3 hours');
         expect(headings()).toEqual(SECTIONS);
@@ -132,7 +134,8 @@ describe('RenovateView', () => {
         show({ state: state({ model: fullModel() }) });
         const summary = screen.getByRole('list', { name: 'Summary' });
         const items = within(summary).getAllByRole('listitem').map((item) => item.textContent);
-        expect(items).toEqual(['2Needs your approval', '2In cooldown', '3Waiting for Sunday', '1Other open PRs', '1No release date', '2Problems']);
+        expect(items).toEqual(['2Needs your approval', '2In cooldown', '3Waiting for Sunday', '1Other open PRs', '2Problems']);
+        expect(screen.getByText('Of the open PRs and waiting updates, 1 has no release date.')).toBeTruthy();
     });
 
     it('each section shows its columns and GitHub links from the spec', () => {
@@ -180,11 +183,11 @@ describe('RenovateView', () => {
         expect(hrefs(problems)).toContain('https://github.com/example-org/app-two');
 
         const history = section('Run history');
-        expect(headers(history)).toEqual(['Planned', 'Started', 'Late', 'Duration', 'Conclusion', 'Event']);
+        expect(headers(history)).toEqual(['Planned', 'Started', 'Late since', 'Duration', 'Conclusion', 'Event']);
         const runRow = within(history).getAllByRole('row')[1];
         expect(runRow.textContent).toContain('Mon 2 Nov 03:15');
         expect(runRow.textContent).toContain('Mon 2 Nov 03:20');
-        expect(runRow.textContent).toContain('5 min');
+        expect(runRow.textContent).toContain('03:15, 5 min');
         expect(runRow.textContent).toContain('5 min 30 s');
         expect(runRow.textContent).toContain('success');
         expect(hrefs(runRow)).toEqual(['https://github.com/sondresjolyst/si-renovate-config/actions/runs/501']);
@@ -268,6 +271,190 @@ describe('RenovateView', () => {
         expect(section('Problems').querySelector('td details')).toBeNull();
     });
 
+    it('every summary on the page is a plain toggle with no links in it', () => {
+        const { container } = show({
+            state: state({
+                model: model({
+                    ...fullModel(),
+                    cooldown: [update(), update({ repo: 'example-org/app-two' })],
+                    problems: [problem({ message: 'Long text. '.repeat(30) })],
+                }),
+            }),
+        });
+        expect(container.querySelectorAll('summary').length).toBeGreaterThan(3);
+        expect(container.querySelectorAll('summary a')).toHaveLength(0);
+    });
+
+    it('a warning that is not a failure uses status, and a failure uses alert', () => {
+        show({
+            state: state({
+                model: model({ warnings: [{ kind: 'no-sunday-run', message: 'No scheduled run.' }] }),
+                lastError: 'It broke.',
+                lastErrorAt: hoursAgo(1),
+            }),
+        });
+        expect(screen.getByRole('status').textContent).toBe('No scheduled run.');
+        expect(screen.getByRole('alert').textContent).toContain('It broke.');
+    });
+
+    describe('phone layout', () => {
+        it('tables keep their roles when the phone layout makes them blocks', () => {
+            const { container } = show({ state: state({ model: fullModel() }), runs: [workflowRun()] });
+            expect(container.querySelectorAll('table:not([role="table"])')).toHaveLength(0);
+            expect(container.querySelectorAll('tr:not([role="row"])')).toHaveLength(0);
+            expect(container.querySelectorAll('td:not([role="cell"])')).toHaveLength(0);
+            expect(container.querySelectorAll('th:not([role="columnheader"])')).toHaveLength(0);
+        });
+
+        it('every cell names its column for the phone layout', () => {
+            show({ state: state({ model: fullModel() }), runs: [workflowRun()] });
+            const labels = (name: string) => {
+                const row = within(section(name)).getAllByRole('row')[1];
+                return [...row.querySelectorAll('[data-phone-label]')].map((label) => label.textContent?.trim());
+            };
+            expect(labels('Needs your approval')).toEqual(['Repo', 'Title', 'Age', 'Checks', 'Links']);
+            expect(labels('In cooldown')).toEqual(['Repo', 'Update', 'Cooldown', 'PR', 'Links']);
+            expect(labels('Other open PRs')).toEqual(['Repo', 'Title', 'Age', 'Checks', 'Links']);
+            expect(labels('Problems')).toEqual(['Kind', 'Repo', 'Package', 'Details']);
+            expect(labels('Run history')).toEqual(['Planned', 'Started', 'Late since', 'Duration', 'Conclusion', 'Event']);
+        });
+
+        it('values that need a name show it, and others are for screen readers only', () => {
+            show({ state: state({ model: fullModel() }) });
+            const row = within(section('Needs your approval')).getAllByRole('row')[1];
+            const label = (text: string) => [...row.querySelectorAll('[data-phone-label]')].find((item) => item.textContent?.trim() === text);
+            expect(label('Age')?.className).not.toContain('sr-only');
+            expect(label('Checks')?.className).not.toContain('sr-only');
+            expect(label('Repo')?.className).toContain('sr-only');
+        });
+    });
+
+    describe('In cooldown', () => {
+        const END = '2026-11-04T17:00:00.000Z';
+        const shared = { dep: 'equinor/ops-actions', newVersion: 'v9.44.0', cooldownEnd: END, sourceUrl: 'https://github.com/example-vendor/ops-actions' };
+        const inRepo = (name: string, overrides: Partial<UpdateRow> = {}) =>
+            update({ ...shared, repo: `example-org/${name}`, branch: 'renovate/github-actions', ...overrides });
+        const cooldownModel = (rows: UpdateRow[]) => state({ model: model({ cooldown: rows }) });
+        const bodyRows = () => within(section('In cooldown')).getAllByRole('row').slice(1).filter((row) => row.closest('thead') === null && row.parentElement?.closest('details') === null);
+
+        it('identical updates become one row with the repo count, progress and expected PR', () => {
+            show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two'), inRepo('app-three')]) });
+            const rows = bodyRows();
+            expect(rows).toHaveLength(1);
+            expect(rows[0].textContent).toContain('equinor/ops-actions to v9.44.0');
+            expect(rows[0].textContent).toContain('3 repos');
+            expect(rows[0].textContent).toContain('2 days left');
+            expect(rows[0].textContent).toContain('Expected Sun 8 Nov 03:15');
+            expect(within(rows[0]).getAllByRole('progressbar')).toHaveLength(1);
+        });
+
+        it('a closed details on the row lists each repo with its links', () => {
+            show({ state: cooldownModel([inRepo('app-one', { dashboardIssue: 12 }), inRepo('app-two', { dashboardIssue: 7 })]) });
+            const details = bodyRows()[0].querySelector('details');
+            expect(details?.hasAttribute('open')).toBe(false);
+            expect(hrefs(details as HTMLElement)).toEqual([
+                'https://github.com/example-org/app-one',
+                'https://github.com/example-vendor/ops-actions/releases',
+                'https://github.com/example-org/app-one/issues/12',
+                'https://github.com/example-org/app-two',
+                'https://github.com/example-vendor/ops-actions/releases',
+                'https://github.com/example-org/app-two/issues/7',
+            ]);
+        });
+
+        it('one repo is a normal row with no details', () => {
+            show({ state: cooldownModel([inRepo('app-one')]) });
+            const rows = bodyRows();
+            expect(rows[0].querySelector('details')).toBeNull();
+            expect(rows[0].textContent).not.toContain('1 repo');
+            expect(hrefs(rows[0])).toContain('https://github.com/example-org/app-one');
+        });
+
+        it('the same dep with another end or another version stays a separate row', () => {
+            show({
+                state: cooldownModel([
+                    inRepo('app-one'),
+                    inRepo('app-two', { cooldownEnd: '2026-11-05T17:00:00.000Z' }),
+                    inRepo('app-three', { newVersion: 'v9.45.0' }),
+                ]),
+            });
+            expect(bodyRows()).toHaveLength(3);
+        });
+
+        it('rows with another expected PR stay separate, so that date is never wrong', () => {
+            show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two', { expectedPr: '2026-11-15T02:15:00.000Z' })]) });
+            const rows = bodyRows();
+            expect(rows).toHaveLength(2);
+            expect(rows[1].textContent).toContain('Expected Sun 15 Nov 03:15');
+        });
+
+        it('the section count states rows, updates and repos when they differ', () => {
+            show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two'), inRepo('app-three'), update()]) });
+            expect(section('In cooldown').querySelector('h2')?.textContent).toBe('In cooldown2 rows, 4 updates, 3 repos');
+        });
+
+        it('the section count is one number when nothing is grouped', () => {
+            show({ state: cooldownModel([inRepo('app-one'), update({ repo: 'example-org/app-two' })]) });
+            expect(section('In cooldown').querySelector('h2')?.textContent).toBe('In cooldown2');
+        });
+
+        it('tags stay on the group row', () => {
+            show({ state: cooldownModel([inRepo('app-one', { tags: ['Major'] }), inRepo('app-two', { tags: ['Major', 'No release date'] })]) });
+            const summary = bodyRows()[0].querySelector('summary')?.textContent;
+            expect(summary).toContain('Major');
+            expect(summary).toContain('No release date');
+        });
+
+        it('sorts by the soonest end', () => {
+            show({
+                state: cooldownModel([
+                    update({ dep: 'late', cooldownEnd: '2026-11-06T17:00:00.000Z' }),
+                    inRepo('app-one'),
+                    inRepo('app-two'),
+                    update({ dep: 'middle', cooldownEnd: '2026-11-05T17:00:00.000Z' }),
+                ]),
+            });
+            const text = bodyRows().map((row) => row.textContent);
+            expect(text[0]).toContain('equinor/ops-actions');
+            expect(text[1]).toContain('middle to');
+            expect(text[2]).toContain('late to');
+        });
+
+        it('the repo filter matches any repo in the group, and the row shows only that repo', () => {
+            show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two'), inRepo('app-three')]) });
+            fireEvent.change(screen.getByLabelText('Repo'), { target: { value: 'example-org/app-two' } });
+            const rows = bodyRows();
+            expect(rows).toHaveLength(1);
+            expect(rows[0].querySelector('details')).toBeNull();
+            expect(hrefs(rows[0])).toContain('https://github.com/example-org/app-two');
+            expect(hrefs(rows[0])).not.toContain('https://github.com/example-org/app-one');
+            expect(section('In cooldown').querySelector('h2')?.textContent).toBe('In cooldown1 of 3 updates');
+        });
+
+        it('the text filter matches the dep and keeps the group', () => {
+            show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two'), update()]) });
+            fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'OPS-ACTIONS' } });
+            const rows = bodyRows();
+            expect(rows).toHaveLength(1);
+            expect(rows[0].textContent).toContain('2 repos');
+        });
+
+        it('the text filter matches a repo and shows only the matching repos, opened', () => {
+            show({ state: cooldownModel([inRepo('app-one'), inRepo('app-two'), inRepo('tool-three')]) });
+            fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'app-' } });
+            const rows = bodyRows();
+            expect(rows[0].textContent).toContain('2 repos');
+            expect(rows[0].querySelector('details')?.hasAttribute('open')).toBe(true);
+            expect(hrefs(rows[0])).not.toContain('https://github.com/example-org/tool-three');
+        });
+
+        it('the text filter does not match a branch the section does not show', () => {
+            show({ state: cooldownModel([inRepo('app-one')]) });
+            fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'renovate/github' } });
+            expect(section('In cooldown').textContent).toContain('No rows match the filters.');
+        });
+    });
+
     describe('Waiting for Sunday', () => {
         const pins = Array.from({ length: 5 }, (_, index) =>
             update({ dep: `pin-${index}`, newVersion: '1.0.0', branch: 'renovate/pin-dependencies', cooldownEnd: null, daysLeft: null }),
@@ -294,6 +481,7 @@ describe('RenovateView', () => {
             expect(first).toContain('renovate/pin-dependencies');
             expect(first).toContain('5 updates');
             expect(first).toContain('Expected Sun 8 Nov 03:15');
+            expect(hrefs(groups[0])).toEqual(expect.arrayContaining(['https://github.com/example-org/app-one', 'https://github.com/example-org/app-one/issues/12']));
             const second = groups[1].querySelector('summary')?.textContent;
             expect(second).toContain('1 update');
             expect(second).toContain('Major');

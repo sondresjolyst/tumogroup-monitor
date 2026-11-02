@@ -23,7 +23,7 @@ export function RenovateView({ state, runs, now }: RenovateViewProps) {
             <div className={pageClass}>
                 <Header latestRun={null} lastRefresh={null} />
                 <main>
-                    <Alert variant="error" role="status">
+                    <Alert variant="error" role="alert">
                         The page cannot read the database.
                     </Alert>
                 </main>

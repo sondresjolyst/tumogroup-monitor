@@ -249,6 +249,15 @@ describe('buildModel problems and counts', () => {
         expect(kinds('disabled').map((p) => p.repo)).toEqual(['example-org/archived-tool']);
     });
 
+    it('counts every open PR and waiting row with the "No release date" tag', () => {
+        const tagged = { labels: ['no-release-date'] };
+        const model = build([pr({ number: 1, ...tagged }), pr({ number: 2, body: AUTOMERGE_BODY, branch: 'renovate/other', ...tagged })]);
+        const waiting = model.waiting.filter((r) => r.tags.includes('No release date')).length;
+        expect(model.otherPrs[0].tags).toContain('No release date');
+        expect(model.counts.noReleaseDate).toBe(waiting + 2);
+        expect(model.cooldown.filter((r) => r.tags.includes('No release date'))).toEqual([]);
+    });
+
     it('counts every section', () => {
         const model = build([pr(), pr({ number: 2, body: AUTOMERGE_BODY, branch: 'renovate/other' })]);
         expect(model.counts).toEqual({

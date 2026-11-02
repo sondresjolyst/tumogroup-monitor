@@ -1,26 +1,10 @@
 import { CONFIG_REPO_URL } from '@/lib/github/client';
 import { runRows } from '@/lib/model/build';
 import type { WorkflowRun } from '@/lib/model/types';
-import { formatDuration, formatOslo } from './format';
-import {
-    EmptyText,
-    ExternalLink,
-    Section,
-    bodyClass,
-    cellClass,
-    headCellClass,
-    headClass,
-    rowClass,
-    tableClass,
-    timeCellClass,
-} from './ui';
+import { formatDuration, formatOslo, formatOsloTime } from './format';
+import { Cell, EmptyText, ExternalLink, Row, Section, Table } from './ui';
 
 const SHOWN_RUNS = 20;
-
-/** The column name, for the phone layout, where the table has no header row. */
-function PhoneLabel({ children }: { children: string }) {
-    return <span className="text-muted md:hidden">{children} </span>;
-}
 
 export function RunHistory({ runs }: { runs: WorkflowRun[] }) {
     const rows = runRows(runs).slice(0, SHOWN_RUNS);
@@ -29,53 +13,31 @@ export function RunHistory({ runs }: { runs: WorkflowRun[] }) {
             {rows.length === 0 ? (
                 <EmptyText>No runs recorded.</EmptyText>
             ) : (
-                <table className={tableClass}>
-                    <thead className={headClass}>
-                        <tr>
-                            {['Planned', 'Started', 'Late', 'Duration', 'Conclusion', 'Event'].map((name) => (
-                                <th key={name} scope="col" className={headCellClass}>
-                                    {name}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className={bodyClass}>
-                        {rows.map((row) => (
-                            <tr key={row.id} className={rowClass}>
-                                <td className={timeCellClass}>
-                                    {row.plannedSlot ? (
-                                        <>
-                                            <PhoneLabel>Planned</PhoneLabel>
-                                            {formatOslo(row.plannedSlot)}
-                                        </>
-                                    ) : (
-                                        'Not planned'
-                                    )}
-                                </td>
-                                <td className={timeCellClass}>
-                                    <PhoneLabel>Started</PhoneLabel>
-                                    {formatOslo(row.startedAt)}
-                                </td>
-                                <td className={timeCellClass}>
-                                    {row.plannedSlot && (
-                                        <>
-                                            <PhoneLabel>Late</PhoneLabel>
-                                            {formatDuration(new Date(row.startedAt).getTime() - new Date(row.plannedSlot).getTime())}
-                                        </>
-                                    )}
-                                </td>
-                                <td className={timeCellClass}>
-                                    <PhoneLabel>Duration</PhoneLabel>
-                                    {formatDuration(row.durationMs)}
-                                </td>
-                                <td className={cellClass}>
-                                    <ExternalLink href={`${CONFIG_REPO_URL}/actions/runs/${row.id}`}>{row.conclusion ?? 'in progress'}</ExternalLink>
-                                </td>
-                                <td className={cellClass}>{row.event}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                <Table names={['Planned', 'Started', 'Late since', 'Duration', 'Conclusion', 'Event']}>
+                    {rows.map((row) => (
+                        <Row key={row.id}>
+                            <Cell label={row.plannedSlot ? 'Planned' : undefined} kind="time">
+                                {row.plannedSlot ? formatOslo(row.plannedSlot) : 'Not planned'}
+                            </Cell>
+                            <Cell label="Started" kind="time">
+                                {formatOslo(row.startedAt)}
+                            </Cell>
+                            <Cell label={row.plannedSlot ? 'Late since' : undefined} kind="time">
+                                {row.plannedSlot &&
+                                    `${formatOsloTime(row.plannedSlot)}, ${formatDuration(new Date(row.startedAt).getTime() - new Date(row.plannedSlot).getTime())}`}
+                            </Cell>
+                            <Cell label="Duration" kind="time">
+                                {formatDuration(row.durationMs)}
+                            </Cell>
+                            <Cell label="Conclusion" labelHidden>
+                                <ExternalLink href={`${CONFIG_REPO_URL}/actions/runs/${row.id}`}>{row.conclusion ?? 'in progress'}</ExternalLink>
+                            </Cell>
+                            <Cell label="Event" labelHidden>
+                                {row.event}
+                            </Cell>
+                        </Row>
+                    ))}
+                </Table>
             )}
         </Section>
     );

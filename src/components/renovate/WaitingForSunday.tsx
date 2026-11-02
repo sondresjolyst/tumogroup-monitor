@@ -1,20 +1,7 @@
 import type { Tag, UpdateRow } from '@/lib/model/types';
 import { formatOslo } from './format';
 import { DashboardLink } from './UpdateLinks';
-import {
-    EmptyText,
-    NO_MATCH,
-    ReleaseNotes,
-    RepoLink,
-    Section,
-    Tags,
-    bodyClass,
-    cellClass,
-    countText,
-    rowClass,
-    tableClass,
-    wideCellClass,
-} from './ui';
+import { Cell, EmptyText, NO_MATCH, ReleaseNotes, RepoLink, Row, Section, Table, Tags, countText, repoName } from './ui';
 
 const count = (value: number, word: string) => `${value} ${word}${value === 1 ? '' : 'es'}`;
 const updates = (value: number) => `${value} update${value === 1 ? '' : 's'}`;
@@ -34,35 +21,34 @@ function Group({ rows, open }: { rows: UpdateRow[]; open: boolean }) {
         <details open={open} className="border-b border-line">
             <summary className="cursor-pointer py-1.5 text-sm">
                 <span className="[overflow-wrap:anywhere] [&>*]:mr-3">
-                    <span>
-                        <RepoLink repo={first.repo} />
-                    </span>
+                    <span>{repoName(first.repo)}</span>
                     <span>{first.branch}</span>
                     <span className="text-muted tabular-nums">{updates(rows.length)}</span>
                     <span className="tabular-nums">Expected {formatOslo(first.expectedPr)}</span>
-                    <span>
-                        <DashboardLink repo={first.repo} issue={first.dashboardIssue} />
-                    </span>
                     <span className="-ml-1.5">
                         <Tags tags={groupTags(rows)} />
                     </span>
                 </span>
             </summary>
-            <table className={`${tableClass} mb-2`}>
-                <tbody className={bodyClass}>
+            <p className="flex gap-3 pb-1 text-sm md:pl-4">
+                <RepoLink repo={first.repo} />
+                <DashboardLink repo={first.repo} issue={first.dashboardIssue} />
+            </p>
+            <div className="mb-2">
+                <Table names={['Update', 'Links']} headHidden>
                     {rows.map((row) => (
-                        <tr key={`${row.dep}\n${row.newVersion}`} className={rowClass}>
-                            <td className={`${wideCellClass} md:pl-4`}>
+                        <Row key={`${row.dep}\n${row.newVersion}`}>
+                            <Cell label="Update" labelHidden kind="wide" className="md:pl-4">
                                 {row.dep} to {row.newVersion}
                                 <Tags tags={row.tags} />
-                            </td>
-                            <td className={`${cellClass} whitespace-nowrap md:w-40`}>
+                            </Cell>
+                            <Cell label="Links" labelHidden kind="nowrap" className="md:w-40">
                                 <ReleaseNotes sourceUrl={row.sourceUrl} fallback="No release notes" />
-                            </td>
-                        </tr>
+                            </Cell>
+                        </Row>
                     ))}
-                </tbody>
-            </table>
+                </Table>
+            </div>
         </details>
     );
 }

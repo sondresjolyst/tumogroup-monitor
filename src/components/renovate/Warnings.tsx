@@ -46,7 +46,7 @@ export function Warnings({ state, runs, now }: { state: LatestState; runs: Workf
     return (
         <div className="flex flex-col gap-2">
             {warnings.map((warning) => (
-                <Alert key={warning.text} variant={warning.variant} role="status">
+                <Alert key={warning.text} variant={warning.variant} role={warning.variant === 'error' ? 'alert' : 'status'}>
                     {warning.text}
                 </Alert>
             ))}

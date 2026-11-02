@@ -1,19 +1,6 @@
 import type { ChecksState, PrRow } from '@/lib/model/types';
 import { formatAge } from './format';
-import {
-    ExternalLink,
-    ReleaseNotes,
-    RepoLink,
-    Tags,
-    bodyClass,
-    cellClass,
-    headCellClass,
-    headClass,
-    rowClass,
-    tableClass,
-    timeCellClass,
-    wideCellClass,
-} from './ui';
+import { Cell, ExternalLink, ReleaseNotes, RepoLink, Row, Table, Tags } from './ui';
 
 const CHECKS: Record<ChecksState, { label: string; className: string }> = {
     failing: { label: 'Failing', className: 'text-bad font-medium' },
@@ -24,40 +11,33 @@ const CHECKS: Record<ChecksState, { label: string; className: string }> = {
 
 export function PrTable({ rows, now }: { rows: PrRow[]; now: number }) {
     return (
-        <table className={tableClass}>
-            <thead className={headClass}>
-                <tr>
-                    {['Repo', 'Title', 'Age', 'Checks', 'Links'].map((name) => (
-                        <th key={name} scope="col" className={headCellClass}>
-                            {name}
-                        </th>
-                    ))}
-                </tr>
-            </thead>
-            <tbody className={bodyClass}>
-                {rows.map((row) => {
-                    const checks = CHECKS[row.checks] ?? CHECKS.none;
-                    return (
-                        <tr key={`${row.repo}#${row.number}`} className={rowClass}>
-                            <td className={`${cellClass} whitespace-nowrap`}>
-                                <RepoLink repo={row.repo} />
-                            </td>
-                            <td className={wideCellClass}>
-                                {row.title}
-                                <Tags tags={row.tags} />
-                            </td>
-                            <td className={`${timeCellClass} whitespace-nowrap`}>{formatAge(now - new Date(row.createdAt).getTime())}</td>
-                            <td className={`${cellClass} whitespace-nowrap ${checks.className}`}>{checks.label}</td>
-                            <td className={`${cellClass} whitespace-nowrap`}>
-                                <span className="inline-flex gap-3">
-                                    <ExternalLink href={row.url}>PR #{row.number}</ExternalLink>
-                                    <ReleaseNotes sourceUrl={row.sourceUrl} fallback="Release notes in PR" />
-                                </span>
-                            </td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
+        <Table names={['Repo', 'Title', 'Age', 'Checks', 'Links']}>
+            {rows.map((row) => {
+                const checks = CHECKS[row.checks] ?? CHECKS.none;
+                return (
+                    <Row key={`${row.repo}#${row.number}`}>
+                        <Cell label="Repo" labelHidden kind="nowrap">
+                            <RepoLink repo={row.repo} />
+                        </Cell>
+                        <Cell label="Title" labelHidden kind="wide">
+                            {row.title}
+                            <Tags tags={row.tags} />
+                        </Cell>
+                        <Cell label="Age" kind="time" className="whitespace-nowrap">
+                            {formatAge(now - new Date(row.createdAt).getTime())}
+                        </Cell>
+                        <Cell label="Checks" kind="nowrap">
+                            <span className={checks.className}>{checks.label}</span>
+                        </Cell>
+                        <Cell label="Links" labelHidden kind="nowrap">
+                            <span className="inline-flex gap-3">
+                                <ExternalLink href={row.url}>PR #{row.number}</ExternalLink>
+                                <ReleaseNotes sourceUrl={row.sourceUrl} fallback="Release notes in PR" />
+                            </span>
+                        </Cell>
+                    </Row>
+                );
+            })}
+        </Table>
     );
 }

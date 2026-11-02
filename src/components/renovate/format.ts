@@ -28,6 +28,11 @@ export function formatOslo(value: string | Date): string {
     return `${WEEKDAYS[weekday]} ${Number(parts.day)} ${MONTHS[Number(parts.month) - 1]} ${parts.hour}:${parts.minute}`;
 }
 
+/** Only the time of day from `formatOslo`, such as "03:15". */
+export function formatOsloTime(value: string | Date): string {
+    return formatOslo(value).slice(-5);
+}
+
 /** An age in the largest unit that reads well: minutes, then hours up to 2 days, then days. */
 export function formatAge(ms: number): string {
     const age = Math.max(0, ms);

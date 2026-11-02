@@ -294,7 +294,7 @@ export function buildModel(report: Report, prs: RenovatePr[], runs: WorkflowRun[
     const { needsApproval, otherPrs } = prRows(report, prs);
     const problems = problemRows(report);
     const runHistory = runRows(runs);
-    const noReleaseDate = [...needsApproval, ...waiting].filter((row) => row.tags.includes('No release date')).length;
+    const noReleaseDate = [...needsApproval, ...otherPrs, ...waiting].filter((row) => row.tags.includes('No release date')).length;
     return {
         counts: {
             needsApproval: needsApproval.length,

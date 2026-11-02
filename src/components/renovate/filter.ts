@@ -25,5 +25,9 @@ export const matchesPr = (filter: FilterState, row: PrRow) =>
 export const matchesUpdate = (filter: FilterState, row: UpdateRow) =>
     matches(filter, row.repo, row.tags.includes('No release date'), [row.repo, row.dep, row.newVersion, row.branch]);
 
+/** The section shows no branch, so a branch name must not match here. */
+export const matchesCooldown = (filter: FilterState, row: UpdateRow) =>
+    matches(filter, row.repo, row.tags.includes('No release date'), [row.repo, row.dep, row.newVersion]);
+
 export const matchesProblem = (filter: FilterState, row: ProblemRow) =>
     matches(filter, row.repo, false, [row.repo, row.subject, row.message, row.kind]);

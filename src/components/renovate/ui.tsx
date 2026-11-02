@@ -8,14 +8,70 @@ const SHORT_TEXT = 120;
 
 export const NO_MATCH = 'No rows match the filters.';
 
-export const tableClass = 'w-full border-collapse text-sm max-md:block';
-export const headClass = 'max-md:hidden';
-export const bodyClass = 'max-md:block';
-export const headCellClass = 'border-b border-line py-1 pr-3 text-left text-xs font-medium text-muted';
-export const rowClass = 'border-b border-line max-md:flex max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-1 max-md:py-2';
-export const cellClass = 'py-1.5 pr-3 align-top max-md:block max-md:p-0';
-export const wideCellClass = `${cellClass} [overflow-wrap:anywhere] max-md:w-full`;
-export const timeCellClass = `${cellClass} tabular-nums`;
+const tableClass = 'w-full border-collapse text-sm max-md:block';
+const headCellClass = 'border-b border-line py-1 pr-3 text-left text-xs font-medium text-muted';
+const rowClass = 'border-b border-line max-md:flex max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-1 max-md:py-2';
+const cellClass = 'py-1.5 pr-3 align-top max-md:block max-md:p-0';
+
+/**
+ * A table that becomes stacked rows below `md`. The display change would remove table semantics, so
+ * each element states its role. `headHidden` keeps the column names for screen readers only.
+ */
+export function Table({ names, headHidden, children }: { names: string[]; headHidden?: boolean; children: ReactNode }) {
+    return (
+        <table role="table" className={tableClass}>
+            <thead role="rowgroup" className={headHidden ? 'sr-only' : 'max-md:hidden'}>
+                <tr role="row">
+                    {names.map((name) => (
+                        <th key={name} role="columnheader" scope="col" className={headCellClass}>
+                            {name}
+                        </th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody role="rowgroup" className="max-md:block">
+                {children}
+            </tbody>
+        </table>
+    );
+}
+
+export function Row({ children }: { children: ReactNode }) {
+    return (
+        <tr role="row" className={rowClass}>
+            {children}
+        </tr>
+    );
+}
+
+interface CellProps {
+    /** The column name, shown on phones, where the table has no header row. */
+    label?: string;
+    /** For a value that explains itself. The name then only reaches screen readers. */
+    labelHidden?: boolean;
+    kind?: 'wide' | 'nowrap' | 'time';
+    className?: string;
+    children: ReactNode;
+}
+
+const CELL_KINDS = {
+    wide: '[overflow-wrap:anywhere] max-md:w-full',
+    nowrap: 'whitespace-nowrap',
+    time: 'tabular-nums',
+};
+
+export function Cell({ label, labelHidden, kind, className, children }: CellProps) {
+    return (
+        <td role="cell" className={[cellClass, kind && CELL_KINDS[kind], className].filter(Boolean).join(' ')}>
+            {label && (
+                <span data-phone-label className={labelHidden ? 'sr-only md:hidden' : 'text-muted md:hidden'}>
+                    {label}{' '}
+                </span>
+            )}
+            {children}
+        </td>
+    );
+}
 
 /** A link that opens in a new tab. A missing or unsafe address renders the text alone, never an empty link. */
 export function ExternalLink({ href, children }: { href: string | null | undefined; children: ReactNode }) {

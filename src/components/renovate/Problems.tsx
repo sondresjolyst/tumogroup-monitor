@@ -1,19 +1,5 @@
 import type { ProblemKind, ProblemRow } from '@/lib/model/types';
-import {
-    EmptyText,
-    LongText,
-    NO_MATCH,
-    RepoLink,
-    Section,
-    bodyClass,
-    cellClass,
-    countText,
-    headCellClass,
-    headClass,
-    rowClass,
-    tableClass,
-    wideCellClass,
-} from './ui';
+import { Cell, EmptyText, LongText, NO_MATCH, RepoLink, Row, Section, Table, countText } from './ui';
 
 const KINDS: Record<ProblemKind, string> = {
     abandoned: 'Abandoned',
@@ -31,29 +17,24 @@ export function Problems({ rows, total }: { rows: ProblemRow[]; total: number })
             ) : rows.length === 0 ? (
                 <EmptyText>{NO_MATCH}</EmptyText>
             ) : (
-                <table className={tableClass}>
-                    <thead className={headClass}>
-                        <tr>
-                            {['Kind', 'Repo', 'Package', 'Details'].map((name) => (
-                                <th key={name} scope="col" className={headCellClass}>
-                                    {name}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className={bodyClass}>
-                        {rows.map((row, index) => (
-                            <tr key={index} className={rowClass}>
-                                <td className={`${cellClass} whitespace-nowrap`}>{KINDS[row.kind] ?? row.kind}</td>
-                                <td className={`${cellClass} whitespace-nowrap`}>{row.repo && <RepoLink repo={row.repo} />}</td>
-                                <td className={`${cellClass} [overflow-wrap:anywhere]`}>{row.subject}</td>
-                                <td className={wideCellClass}>
-                                    <LongText text={row.message} />
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                <Table names={['Kind', 'Repo', 'Package', 'Details']}>
+                    {rows.map((row, index) => (
+                        <Row key={index}>
+                            <Cell label="Kind" labelHidden kind="nowrap">
+                                {KINDS[row.kind] ?? row.kind}
+                            </Cell>
+                            <Cell label="Repo" labelHidden kind="nowrap">
+                                {row.repo && <RepoLink repo={row.repo} />}
+                            </Cell>
+                            <Cell label="Package" labelHidden className="[overflow-wrap:anywhere]">
+                                {row.subject}
+                            </Cell>
+                            <Cell label="Details" labelHidden kind="wide">
+                                <LongText text={row.message} />
+                            </Cell>
+                        </Row>
+                    ))}
+                </Table>
             )}
         </Section>
     );

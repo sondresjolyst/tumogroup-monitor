@@ -46,6 +46,12 @@ test('a third-party title renders as text and an empty URL renders no link', asy
     await expect(page.getByRole('region', { name: /^Other open PRs/ }).getByText('PR #44')).toBeVisible();
 });
 
+test('no summary holds a link', async ({ page }) => {
+    await open(page);
+    await expect(page.locator('summary').first()).toBeAttached();
+    await expect(page.locator('summary a')).toHaveCount(0);
+});
+
 test('Waiting for Sunday stays closed, and a filter reaches its rows without moving the sections', async ({ page }) => {
     await open(page);
     const waiting = page.getByRole('region', { name: /^Waiting for Sunday/ });
@@ -70,6 +76,11 @@ test('the page sets no horizontal scroll on a phone', async ({ page }) => {
     await page.getByLabel('Text').fill('a');
     const filtered = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(filtered).toBeLessThanOrEqual(0);
+
+    await page.getByLabel('Text').fill('');
+    const approval = page.getByRole('region', { name: /^Needs your approval/ });
+    await expect(approval.getByRole('cell').filter({ hasText: 'Age' }).first()).toBeVisible();
+    await expect(approval.getByRole('cell').filter({ hasText: 'Checks' }).first()).toBeVisible();
     if (screenshotDir) await page.screenshot({ path: join(screenshotDir, 'fixture-phone-filtered.png'), fullPage: true });
 });
 
