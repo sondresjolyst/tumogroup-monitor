@@ -1,5 +1,5 @@
 // The schema lives in a string so it survives bundling into the job image.
-// The role tumogroup_monitor_page must exist before this runs.
+// The role tumogroup_monitor_readonly must exist before this runs.
 export const schemaSql = `
 CREATE TABLE IF NOT EXISTS current_state (
     id boolean PRIMARY KEY DEFAULT true CHECK (id),
@@ -22,5 +22,5 @@ CREATE TABLE IF NOT EXISTS runs (
 
 CREATE INDEX IF NOT EXISTS runs_started_at_idx ON runs (started_at DESC);
 
-GRANT SELECT ON current_state, runs TO tumogroup_monitor_page;
+GRANT SELECT ON current_state, runs TO tumogroup_monitor_readonly;
 `;

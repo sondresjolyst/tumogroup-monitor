@@ -8,7 +8,7 @@ if (!process.env.TEST_DATABASE_URL) {
 }
 
 const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
-const pageRole = 'tumogroup_monitor_page';
+const pageRole = 'tumogroup_monitor_readonly';
 
 const model: PageModel = {
     counts: { needsApproval: 1, cooldown: 2, waiting: 3, otherPrs: 4, noReleaseDate: 5, problems: 6 },
