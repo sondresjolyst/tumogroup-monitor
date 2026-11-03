@@ -1,11 +1,13 @@
+import { AuthLayout } from '@/components/auth/AuthLayout';
 import { safeCallback } from '@/lib/auth/gate';
 import { SignInButton } from './sign-in-button';
 
 export default async function SignIn({ searchParams }: { searchParams: Promise<{ callbackUrl?: string | string[] }> }) {
     const { callbackUrl } = await searchParams;
     return (
-        <main className="p-6">
+        <AuthLayout>
+            <p className="text-base text-muted">Monitor your repos in one place.</p>
             <SignInButton callbackUrl={safeCallback(callbackUrl)} />
-        </main>
+        </AuthLayout>
     );
 }

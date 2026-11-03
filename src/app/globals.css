@@ -16,6 +16,9 @@
     --color-major-bg: #fff8c5;
     --color-major-line: #d4a72c;
     --color-major-text: #6c4a00;
+
+    --color-auth-button: #1f2328;
+    --color-auth-button-text: #ffffff;
 }
 
 :root {
@@ -50,6 +53,9 @@
         --color-input-focus-border: #484f58;
         --color-input-text: #e6edf3;
         --color-input-placeholder: #9198a1;
+
+        --color-auth-button: #f0f3f6;
+        --color-auth-button-text: #1f2328;
     }
 }
 

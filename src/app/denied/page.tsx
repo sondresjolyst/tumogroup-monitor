@@ -1,3 +1,9 @@
+import { AuthLayout } from '@/components/auth/AuthLayout';
+
 export default function Denied() {
-    return <main className="p-6 text-sm">This account does not have access to this page.</main>;
+    return (
+        <AuthLayout>
+            <p className="text-base">This account does not have access to this page.</p>
+        </AuthLayout>
+    );
 }
