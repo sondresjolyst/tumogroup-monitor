@@ -1,0 +1,607 @@
+{
+  "problems": [],
+  "repositories": {
+    "example-org/app-one": {
+      "problems": [],
+      "branches": [
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/apexcharts-8.x",
+          "prNo": null,
+          "prTitle": "chore(deps): update dependency apexcharts to v8.6.0",
+          "result": "not-scheduled",
+          "upgrades": [
+            {
+              "depName": "apexcharts",
+              "updateType": "minor",
+              "newVersion": "8.6.0",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/fluxcd-flux2-2.x",
+          "prNo": null,
+          "prTitle": "chore(deps): update fluxcd/flux2 to v2.10.0",
+          "result": "not-scheduled",
+          "upgrades": [
+            {
+              "depName": "fluxcd/flux2",
+              "updateType": "minor",
+              "newVersion": "v2.10.0",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/python-3.x",
+          "prNo": null,
+          "prTitle": "chore(deps): update dependency python to v3.15",
+          "result": "pending",
+          "upgrades": [
+            {
+              "depName": "python",
+              "updateType": "minor",
+              "newVersion": "3.15",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/vite-9.x",
+          "prNo": null,
+          "prTitle": "chore(deps): update dependency vite to v9",
+          "result": "not-scheduled",
+          "upgrades": [
+            {
+              "depName": "vite",
+              "updateType": "major",
+              "newVersion": "9.0.0",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/typescript-7.x",
+          "prNo": null,
+          "prTitle": "chore(deps): update dependency typescript to v7",
+          "result": "pending",
+          "upgrades": [
+            {
+              "depName": "typescript",
+              "updateType": "major",
+              "newVersion": "7.0.0",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/pin-dependencies",
+          "prNo": null,
+          "prTitle": "chore(deps): pin dependencies",
+          "result": "not-scheduled",
+          "upgrades": [
+            {
+              "depName": "rxjs",
+              "updateType": "pin",
+              "newVersion": "7.8.2",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/docker-node-26.x",
+          "prNo": null,
+          "prTitle": "chore(deps): update node docker tag to v26",
+          "result": "not-scheduled",
+          "upgrades": [
+            {
+              "depName": "node",
+              "updateType": "major",
+              "newVersion": "26.0.0",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/java-version-25.x",
+          "prNo": null,
+          "prTitle": "chore(deps): update java-version to v25",
+          "result": "pending",
+          "upgrades": [
+            {
+              "depName": "java-version",
+              "updateType": "minor",
+              "newVersion": "25",
+              "packageFile": "package.json"
+            }
+          ]
+        }
+      ],
+      "packageFiles": {
+        "npm": [
+          {
+            "packageFile": "package.json",
+            "deps": [
+              {
+                "depName": "apexcharts",
+                "currentValue": "8.5.0",
+                "datasource": "npm",
+                "packageName": "apexcharts",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "8.6.0",
+                    "newValue": "8.6.0",
+                    "releaseTimestamp": "2026-10-29T13:13:22.526Z",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "pendingChecks": true,
+                    "branchName": "renovate/apexcharts-8.x"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/apexcharts",
+                "currentVersion": "8.5.0"
+              },
+              {
+                "depName": "fluxcd/flux2",
+                "currentValue": "v2.9.0",
+                "datasource": "github-releases",
+                "packageName": "fluxcd/flux2",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "v2.10.0",
+                    "newValue": "v2.10.0",
+                    "releaseTimestamp": "2026-10-26T15:37:42.000Z",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "branchName": "renovate/fluxcd-flux2-2.x"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/fluxcd-flux2",
+                "currentVersion": "2.9.0"
+              },
+              {
+                "depName": "python",
+                "currentValue": "3.14",
+                "datasource": "docker",
+                "packageName": "python",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "3.15",
+                    "newValue": "3.15",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "pendingChecks": true,
+                    "branchName": "renovate/python-3.x"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/python",
+                "currentVersion": "3.14"
+              },
+              {
+                "depName": "vite",
+                "currentValue": "8.0.0",
+                "datasource": "npm",
+                "packageName": "vite",
+                "updates": [
+                  {
+                    "bucket": "major",
+                    "newVersion": "9.0.0",
+                    "newValue": "9.0.0",
+                    "releaseTimestamp": "2026-10-20T08:00:00.000Z",
+                    "updateType": "major",
+                    "isBreaking": true,
+                    "branchName": "renovate/vite-9.x"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/vite",
+                "currentVersion": "8.0.0"
+              },
+              {
+                "depName": "typescript",
+                "currentValue": "6.0.3",
+                "datasource": "npm",
+                "packageName": "typescript",
+                "updates": [
+                  {
+                    "bucket": "major",
+                    "newVersion": "7.0.0",
+                    "newValue": "7.0.0",
+                    "releaseTimestamp": "2026-10-31T09:00:00.000Z",
+                    "updateType": "major",
+                    "isBreaking": true,
+                    "pendingChecks": true,
+                    "branchName": "renovate/typescript-7.x"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/typescript",
+                "currentVersion": "6.0.3"
+              },
+              {
+                "depName": "rxjs",
+                "currentValue": "^7.8.2",
+                "datasource": "npm",
+                "packageName": "rxjs",
+                "updates": [
+                  {
+                    "updateType": "pin",
+                    "isPin": true,
+                    "newValue": "7.8.2",
+                    "newVersion": "7.8.2",
+                    "newMajor": 7,
+                    "branchName": "renovate/pin-dependencies"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/rxjs",
+                "currentVersion": "7.8.2"
+              },
+              {
+                "depName": "node",
+                "currentValue": "25",
+                "datasource": "docker",
+                "packageName": "node",
+                "updates": [
+                  {
+                    "bucket": "major",
+                    "newVersion": "26.0.0",
+                    "newValue": "26.0.0",
+                    "releaseTimestamp": "2026-10-01T08:00:00.000Z",
+                    "updateType": "major",
+                    "isBreaking": true,
+                    "branchName": "renovate/docker-node-26.x"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/node",
+                "currentVersion": "25"
+              },
+              {
+                "depName": "java-version",
+                "currentValue": "24",
+                "datasource": "java-version",
+                "packageName": "java-version",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "25",
+                    "newValue": "25",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "pendingChecks": true,
+                    "branchName": "renovate/java-version-25.x"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/java-version",
+                "currentVersion": "24"
+              },
+              {
+                "depName": "request",
+                "currentValue": "2.88.2",
+                "datasource": "npm",
+                "packageName": "request",
+                "updates": [],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/request",
+                "currentVersion": "2.88.2",
+                "isAbandoned": true,
+                "mostRecentTimestamp": "2020-02-11T00:00:00.000Z"
+              },
+              {
+                "depName": "uuidv4",
+                "currentValue": "6.2.13",
+                "datasource": "npm",
+                "packageName": "uuidv4",
+                "updates": [],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/uuidv4",
+                "currentVersion": "6.2.13",
+                "deprecationMessage": "On registry `https://registry.npmjs.org`, the \"latest\" version of dependency `uuidv4` has the following deprecation notice:\n\n`Package no longer supported.`"
+              }
+            ]
+          }
+        ]
+      },
+      "libYearsWithStatus": {},
+      "platform": "github",
+      "defaultBranch": "main",
+      "dependencyDashboardIssue": 12,
+      "configFileName": "renovate.json",
+      "onboardingPrNumber": null,
+      "status": "onboarded"
+    },
+    "example-org/app-two": {
+      "problems": [],
+      "branches": [
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/npm-dev-dependencies",
+          "prNo": null,
+          "prTitle": "chore(deps): update dev dependencies",
+          "result": "not-scheduled",
+          "upgrades": [
+            {
+              "depName": "eslint",
+              "updateType": "patch",
+              "newVersion": "9.39.6",
+              "packageFile": "package.json"
+            },
+            {
+              "depName": "vitest",
+              "updateType": "minor",
+              "newVersion": "5.1.0",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/nuget-dependencies",
+          "prNo": null,
+          "prTitle": "chore(deps): update nuget dependencies",
+          "result": "pending",
+          "upgrades": [
+            {
+              "depName": "Npgsql",
+              "updateType": "minor",
+              "newVersion": "10.1.0",
+              "packageFile": "package.json"
+            },
+            {
+              "depName": "Serilog",
+              "updateType": "minor",
+              "newVersion": "5.1.0",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/npm-dependencies",
+          "prNo": null,
+          "prTitle": "chore(deps): update dependency lodash to v4.18.0",
+          "result": "not-scheduled",
+          "upgrades": [
+            {
+              "depName": "lodash",
+              "updateType": "minor",
+              "newVersion": "4.18.0",
+              "packageFile": "package.json"
+            }
+          ]
+        },
+        {
+          "baseBranch": "main",
+          "branchName": "renovate/github-actions",
+          "prNo": null,
+          "prTitle": "chore(deps): update actions/checkout action to v7.0.2",
+          "result": "not-scheduled",
+          "upgrades": [
+            {
+              "depName": "actions/checkout",
+              "updateType": "patch",
+              "newVersion": "v7.0.2",
+              "packageFile": "package.json"
+            }
+          ]
+        }
+      ],
+      "packageFiles": {
+        "npm": [
+          {
+            "packageFile": "package.json",
+            "deps": [
+              {
+                "depName": "eslint",
+                "currentValue": "9.39.5",
+                "datasource": "npm",
+                "packageName": "eslint",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "9.39.6",
+                    "newValue": "9.39.6",
+                    "releaseTimestamp": "2026-10-20T08:00:00.000Z",
+                    "updateType": "patch",
+                    "isBreaking": false,
+                    "branchName": "renovate/npm-dev-dependencies"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/eslint",
+                "currentVersion": "9.39.5"
+              },
+              {
+                "depName": "vitest",
+                "currentValue": "5.0.5",
+                "datasource": "npm",
+                "packageName": "vitest",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "5.1.0",
+                    "newValue": "5.1.0",
+                    "releaseTimestamp": "2026-11-01T08:00:00.000Z",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "pendingChecks": true,
+                    "branchName": "renovate/npm-dev-dependencies"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/vitest",
+                "currentVersion": "5.0.5"
+              },
+              {
+                "depName": "lodash",
+                "currentValue": "4.17.21",
+                "datasource": "npm",
+                "packageName": "lodash",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "4.18.0",
+                    "newValue": "4.18.0",
+                    "releaseTimestamp": "2026-10-10T08:00:00.000Z",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "branchName": "renovate/npm-dependencies"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/lodash",
+                "currentVersion": "4.17.21"
+              },
+              {
+                "depName": "actions/checkout",
+                "currentValue": "v7.0.1",
+                "datasource": "github-tags",
+                "packageName": "actions/checkout",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "v7.0.2",
+                    "newValue": "v7.0.2",
+                    "releaseTimestamp": "2026-10-12T08:00:00.000Z",
+                    "updateType": "patch",
+                    "isBreaking": false,
+                    "branchName": "renovate/github-actions"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/actions-checkout",
+                "currentVersion": "7.0.1"
+              }
+            ]
+          },
+          {
+            "packageFile": "apps/web/package.json",
+            "deps": [
+              {
+                "depName": "lodash",
+                "currentValue": "4.17.21",
+                "datasource": "npm",
+                "packageName": "lodash",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "4.18.0",
+                    "newValue": "4.18.0",
+                    "releaseTimestamp": "2026-10-10T08:00:00.000Z",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "branchName": "renovate/npm-dependencies"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/lodash",
+                "currentVersion": "4.17.21"
+              }
+            ]
+          }
+        ],
+        "nuget": [
+          {
+            "packageFile": "Api/Api.csproj",
+            "deps": [
+              {
+                "depName": "Npgsql",
+                "currentValue": "10.0.0",
+                "datasource": "nuget",
+                "packageName": "Npgsql",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "10.1.0",
+                    "newValue": "10.1.0",
+                    "releaseTimestamp": "2026-11-01T10:00:00.000Z",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "pendingChecks": true,
+                    "branchName": "renovate/nuget-dependencies"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/Npgsql",
+                "currentVersion": "10.0.0"
+              },
+              {
+                "depName": "Serilog",
+                "currentValue": "5.0.0",
+                "datasource": "nuget",
+                "packageName": "Serilog",
+                "updates": [
+                  {
+                    "bucket": "non-major",
+                    "newVersion": "5.1.0",
+                    "newValue": "5.1.0",
+                    "releaseTimestamp": "2026-10-30T10:00:00.000Z",
+                    "updateType": "minor",
+                    "isBreaking": false,
+                    "pendingChecks": true,
+                    "branchName": "renovate/nuget-dependencies"
+                  }
+                ],
+                "warnings": [],
+                "sourceUrl": "https://github.com/example-vendor/Serilog",
+                "currentVersion": "5.0.0"
+              }
+            ]
+          }
+        ]
+      },
+      "libYearsWithStatus": {},
+      "platform": "github",
+      "defaultBranch": "main",
+      "dependencyDashboardIssue": 7,
+      "configFileName": "renovate.json",
+      "onboardingPrNumber": null,
+      "status": "onboarded"
+    },
+    "example-org/app-three": {
+      "problems": [
+        {
+          "level": 40,
+          "msg": "Failed to look up dependency example-package"
+        }
+      ],
+      "branches": [],
+      "packageFiles": {},
+      "libYearsWithStatus": {},
+      "platform": "github",
+      "defaultBranch": "main",
+      "dependencyDashboardIssue": null,
+      "configFileName": "renovate.json",
+      "onboardingPrNumber": null,
+      "status": "activated"
+    },
+    "example-org/archived-tool": {
+      "problems": [],
+      "branches": [],
+      "packageFiles": {},
+      "libYearsWithStatus": {},
+      "platform": "github",
+      "defaultBranch": "main",
+      "dependencyDashboardIssue": null,
+      "configFileName": "renovate.json",
+      "onboardingPrNumber": null,
+      "status": "disabled"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+/job/
+build/
+.env*
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+test-results/
+playwright-report/

@@ -1,2 +1,26 @@
 # tumogroup-monitor
-Monitor Github Repositories
+
+A private web page that shows the state of Renovate across all repositories, including open pull requests, cooldowns and the next planned run. It is a Next.js app that ships as a Docker image.
+
+## Environment variables
+
+The page needs these:
+
+- `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`: the OAuth app used for sign-in.
+- `NEXTAUTH_SECRET`: the key that signs the session cookie.
+- `NEXTAUTH_URL`: the public address of the page. In production it must start with `https://`, or every page except `/health` stays closed.
+- `ALLOWED_GITHUB_USER_ID`: the numeric GitHub user ID of the one account that may sign in. If it is missing or not only digits, nobody gets in.
+- `DATABASE_URL`: the connection string for a read-only database login.
+
+The refresh job needs these:
+
+- `DATABASE_URL`: the connection string for a read-write database login.
+- `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY`: the GitHub App that reads the repositories.
+- `GITHUB_API_URL`: optional, defaults to the public GitHub API.
+- `GITHUB_TIMEOUT_MS`: optional, the timeout for each GitHub request.
+
+## Checks
+
+- `npm test`: unit and component tests.
+- `npm run test:db`: store tests against Postgres in Docker.
+- `npm run test:e2e`: Playwright checks against the production build, with Postgres in Docker. Run `npm run build` first. `PLAYWRIGHT_OUTPUT_DIR` sets where Playwright writes its output, and `E2E_SCREENSHOT_DIR` turns on screenshots.

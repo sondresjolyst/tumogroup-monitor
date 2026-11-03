@@ -1,0 +1,59 @@
+@import "tailwindcss";
+@import "@sjolystinnovation/app-kit/styles.css";
+
+@theme {
+    --color-background: #ffffff;
+    --color-surface: #f6f8fa;
+    --color-foreground: #1f2328;
+    --color-muted: #59636e;
+    --color-line: #d0d7de;
+    --color-link: #0969da;
+    --color-primary: #0969da;
+    --color-primary-foreground: #ffffff;
+    --color-bad: #cf222e;
+    --color-pending: #9a6700;
+    --color-good: #1a7f37;
+    --color-major-bg: #fff8c5;
+    --color-major-line: #d4a72c;
+    --color-major-text: #6c4a00;
+}
+
+:root {
+    color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-background: #0d1117;
+        --color-surface: #161b22;
+        --color-foreground: #e6edf3;
+        --color-muted: #9198a1;
+        --color-line: #30363d;
+        --color-link: #58a6ff;
+        --color-primary: #58a6ff;
+        --color-primary-foreground: #0d1117;
+        --color-bad: #ff7b72;
+        --color-pending: #d29922;
+        --color-good: #3fb950;
+        --color-major-bg: #3a2d00;
+        --color-major-line: #9e6a03;
+        --color-major-text: #e3b341;
+
+        --color-alert-error-bg: #2d1416;
+        --color-alert-error-border: #8e2a2a;
+        --color-alert-error-text: #ffb4ad;
+        --color-alert-warning-bg: #2e2204;
+        --color-alert-warning-border: #9e6a03;
+        --color-alert-warning-text: #f2cc60;
+        --color-field-label-text: #e6edf3;
+        --color-input-border: #484f58;
+        --color-input-focus-border: #484f58;
+        --color-input-text: #e6edf3;
+        --color-input-placeholder: #9198a1;
+    }
+}
+
+body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+}
