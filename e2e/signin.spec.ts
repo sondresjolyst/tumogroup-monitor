@@ -25,7 +25,7 @@ test('the sign-in page is one centered column with no browser errors', async ({ 
     expect(response?.status()).toBe(200);
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('heading', { level: 1, name: 'Tumogroup monitor' })).toBeVisible();
-    await expect(page.getByText('All your repos in one place.')).toBeVisible();
+    await expect(page.getByText('Monitor your repos in one place.')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
     await expect(page.locator('img')).toHaveCount(0);
     expect(await page.evaluate(() => document.fonts.check('600 36px "Bricolage Grotesque"'))).toBe(true);
