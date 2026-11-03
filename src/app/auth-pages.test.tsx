@@ -21,7 +21,7 @@ describe('auth pages', () => {
         expect(screen.getAllByRole('button')).toHaveLength(1);
         expect(screen.getByRole('button', { name: 'Sign in with GitHub' })).toBeTruthy();
         const content = document.querySelector('[data-auth-content]')!;
-        expect(content.textContent).toBe('Tumogroup monitorRenovate updates across your repos.Sign in with GitHub');
+        expect(content.textContent).toBe('Tumogroup monitorAll your repos in one place.Sign in with GitHub');
     });
 
     it('denied keeps its wording and offers no sign-in', () => {

@@ -6,7 +6,7 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<{
     const { callbackUrl } = await searchParams;
     return (
         <AuthLayout>
-            <p className="text-base text-auth-muted">Renovate updates across your repos.</p>
+            <p className="text-base text-auth-muted">All your repos in one place.</p>
             <SignInButton callbackUrl={safeCallback(callbackUrl)} />
         </AuthLayout>
     );
