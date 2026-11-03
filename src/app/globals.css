@@ -17,9 +17,6 @@
     --color-major-line: #d4a72c;
     --color-major-text: #6c4a00;
 
-    --color-auth-form: #f6f8fb;
-    --color-auth-text: #1b2536;
-    --color-auth-muted: #5a667a;
     --color-auth-button: #1f2328;
     --color-auth-button-text: #ffffff;
 }
@@ -57,9 +54,6 @@
         --color-input-text: #e6edf3;
         --color-input-placeholder: #9198a1;
 
-        --color-auth-form: #121826;
-        --color-auth-text: #eef2f8;
-        --color-auth-muted: #9aa7bc;
         --color-auth-button: #f0f3f6;
         --color-auth-button-text: #1f2328;
     }

@@ -42,7 +42,7 @@ export function SignInButton({ callbackUrl }: { callbackUrl: string }) {
             disabled={pending}
             aria-busy={pending}
             onClick={start}
-            className="mt-3 flex min-h-11 w-full items-center justify-center gap-3 rounded-[6px] bg-auth-button px-4 text-sm font-semibold text-auth-button-text enabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-auth-text disabled:cursor-progress"
+            className="mt-3 flex min-h-11 w-full items-center justify-center gap-3 rounded-button bg-auth-button px-4 text-sm font-semibold text-auth-button-text enabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:cursor-progress"
         >
             {pending ? <Spinner /> : <GitHubMark />}
             <span>Sign in with GitHub</span>

@@ -9,7 +9,7 @@ export default async function AuthError({ searchParams }: { searchParams: Promis
     return (
         <AuthLayout>
             <p className="text-base">Sign-in failed.</p>
-            <Link href="/signin" className="w-fit text-base underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-auth-text">
+            <Link href="/signin" className="w-fit text-base underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
                 Try again
             </Link>
         </AuthLayout>
