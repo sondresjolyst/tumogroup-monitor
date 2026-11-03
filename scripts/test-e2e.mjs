@@ -80,7 +80,7 @@ try {
     }, 'The app');
 
     const token = await encode({ token: { githubId: ownerId }, secret });
-    code = run('@playwright/test/cli.js', ['test', ...process.argv.slice(2)], { E2E_BASE_URL: baseUrl, E2E_SESSION_TOKEN: token });
+    code = run('@playwright/test/cli.js', ['test', ...process.argv.slice(2)], { E2E_BASE_URL: baseUrl, E2E_SESSION_TOKEN: token, E2E_DATABASE_URL: databaseUrl });
 } catch (error) {
     console.error(error instanceof Error ? error.message : 'The check failed.');
 } finally {
