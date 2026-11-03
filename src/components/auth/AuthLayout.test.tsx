@@ -15,14 +15,11 @@ describe('AuthLayout', () => {
         expect(screen.getByRole('main')).toBeTruthy();
     });
 
-    it('draws the week as a hidden drawing with seven days and no numbers or names', () => {
+    it('is one centered column with no drawing and no image', () => {
         const { container } = render(<AuthLayout>{null}</AuthLayout>);
-        const drawing = container.querySelector('.week')!;
-        expect(drawing.getAttribute('aria-hidden')).toBe('true');
-        expect(drawing.querySelector('.week-days')!.textContent).toBe('MonTueWedThuFriSatSun');
-        expect(drawing.textContent).not.toMatch(/[0-9]/);
-        expect(drawing.querySelectorAll('.week-bar')).toHaveLength(8);
-        expect(drawing.querySelectorAll('.week-dot')).toHaveLength(8);
+        expect(container.querySelector('[aria-hidden]')).toBeNull();
         expect(container.querySelector('img')).toBeNull();
+        expect(container.querySelector('main')!.className).toContain('justify-center');
+        expect(container.querySelector('[data-auth-content]')!.className).toContain('max-w-[22rem]');
     });
 });

@@ -15,7 +15,7 @@ function watch(page: Page) {
     return problems;
 }
 
-test('the sign-in page is a split screen with the week drawing and no browser errors', async ({ page, baseURL }) => {
+test('the sign-in page is one centered column with no browser errors', async ({ page, baseURL }) => {
     const problems = watch(page);
     const outside: string[] = [];
     page.on('request', (request) => {
@@ -31,11 +31,9 @@ test('the sign-in page is a split screen with the week drawing and no browser er
     expect(await page.evaluate(() => document.fonts.check('600 36px "Bricolage Grotesque"'))).toBe(true);
 
     const viewport = page.viewportSize()!;
-    const panel = (await page.locator('.week').boundingBox())!;
-    expect(Math.abs(panel.width / viewport.width - 0.6)).toBeLessThan(0.01);
-    expect(panel.height).toBeGreaterThanOrEqual(viewport.height - 1);
     const content = (await page.locator('[data-auth-content]').boundingBox())!;
     expect(content.width).toBeLessThanOrEqual(22 * 16 + 1);
+    expect(Math.abs(content.x + content.width / 2 - viewport.width / 2)).toBeLessThan(2);
     expect(Math.abs(content.y + content.height / 2 - viewport.height / 2)).toBeLessThan(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(problems).toEqual([]);
@@ -43,15 +41,13 @@ test('the sign-in page is a split screen with the week drawing and no browser er
     if (screenshotDir) await page.screenshot({ path: join(screenshotDir, 'signin.png') });
 });
 
-test('on a phone the drawing is a band above the content with no horizontal scroll', async ({ page }) => {
+test('on a phone the column fits with no horizontal scroll', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/signin');
     await page.waitForLoadState('networkidle');
-    const panel = (await page.locator('.week').boundingBox())!;
-    expect(panel.width).toBe(390);
-    expect(panel.height).toBe(200);
     const content = (await page.locator('[data-auth-content]').boundingBox())!;
-    expect(content.y).toBeGreaterThanOrEqual(200);
+    expect(content.x).toBeGreaterThanOrEqual(0);
+    expect(content.x + content.width).toBeLessThanOrEqual(390);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
