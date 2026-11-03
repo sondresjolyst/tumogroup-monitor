@@ -42,6 +42,16 @@ const fullModel = () =>
     });
 
 describe('RenovateView', () => {
+    it.each([
+        ['data', {}],
+        ['no data yet', { state: state({ model: null, lastSuccessAt: null }) }],
+        ['waiting for refresh', { state: state({ model: null, modelOutdated: true }) }],
+        ['database failure', { state: null }],
+    ] as [string, Partial<RenovateViewProps>][])('shows Sign out in the header with %s', (_name, props) => {
+        show(props);
+        expect(within(screen.getByRole('banner')).getByRole('button', { name: 'Sign out' })).toBeTruthy();
+    });
+
     it('header shows last run, conclusion and last refresh in Oslo time', () => {
         show({
             state: state({ lastSuccessAt: new Date('2026-11-02T16:45:00Z') }),
