@@ -15,23 +15,44 @@ function watch(page: Page) {
     return problems;
 }
 
-test('the sign-in page is one centered card with no browser errors', async ({ page }) => {
+test('the sign-in page is a split screen with the week drawing and no browser errors', async ({ page, baseURL }) => {
     const problems = watch(page);
+    const outside: string[] = [];
+    page.on('request', (request) => {
+        if (!request.url().startsWith(baseURL!) && !request.url().startsWith('data:')) outside.push(request.url());
+    });
     const response = await page.goto('/signin');
     expect(response?.status()).toBe(200);
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('heading', { level: 1, name: 'Tumogroup monitor' })).toBeVisible();
-    const button = page.getByRole('button', { name: 'Sign in with GitHub' });
-    await expect(button).toBeVisible();
+    await expect(page.getByText('Renovate updates across your repos.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
     await expect(page.locator('img')).toHaveCount(0);
+    expect(await page.evaluate(() => document.fonts.check('600 36px "Bricolage Grotesque"'))).toBe(true);
 
     const viewport = page.viewportSize()!;
-    const box = (await page.locator('main > div').boundingBox())!;
-    expect(Math.abs(box.x + box.width / 2 - viewport.width / 2)).toBeLessThan(1);
-    expect(Math.abs(box.y + box.height / 2 - viewport.height / 2)).toBeLessThan(1);
+    const panel = (await page.locator('.week').boundingBox())!;
+    expect(Math.abs(panel.width / viewport.width - 0.6)).toBeLessThan(0.01);
+    expect(panel.height).toBeGreaterThanOrEqual(viewport.height - 1);
+    const content = (await page.locator('[data-auth-content]').boundingBox())!;
+    expect(content.width).toBeLessThanOrEqual(22 * 16 + 1);
+    expect(Math.abs(content.y + content.height / 2 - viewport.height / 2)).toBeLessThan(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(problems).toEqual([]);
+    expect(outside).toEqual([]);
     if (screenshotDir) await page.screenshot({ path: join(screenshotDir, 'signin.png') });
+});
+
+test('on a phone the drawing is a band above the content with no horizontal scroll', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/signin');
+    await page.waitForLoadState('networkidle');
+    const panel = (await page.locator('.week').boundingBox())!;
+    expect(panel.width).toBe(390);
+    expect(panel.height).toBe(200);
+    const content = (await page.locator('[data-auth-content]').boundingBox())!;
+    expect(content.y).toBeGreaterThanOrEqual(200);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test('clicking the button goes to GitHub with the callback kept', async ({ page }) => {
@@ -50,7 +71,7 @@ test('clicking the button goes to GitHub with the callback kept', async ({ page 
     expect(new URL(githubUrl).searchParams.get('client_id')).toBe('invented-client-id');
 });
 
-test('the denied and auth-error pages use the same card', async ({ page }) => {
+test('the denied and auth-error pages use the same layout', async ({ page }) => {
     for (const [path, text] of [
         ['/denied', 'This account does not have access to this page.'],
         ['/auth-error?error=Callback', 'Sign-in failed.'],

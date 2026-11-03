@@ -1,12 +1,13 @@
-import { AuthCard } from '@/components/auth/AuthCard';
+import { AuthLayout } from '@/components/auth/AuthLayout';
 import { safeCallback } from '@/lib/auth/gate';
 import { SignInButton } from './sign-in-button';
 
 export default async function SignIn({ searchParams }: { searchParams: Promise<{ callbackUrl?: string | string[] }> }) {
     const { callbackUrl } = await searchParams;
     return (
-        <AuthCard>
+        <AuthLayout>
+            <p className="text-base text-auth-muted">Renovate updates across your repos.</p>
             <SignInButton callbackUrl={safeCallback(callbackUrl)} />
-        </AuthCard>
+        </AuthLayout>
     );
 }

@@ -2,6 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('next/font/google', () => ({ Bricolage_Grotesque: () => ({ className: 'heading-font' }) }));
 vi.mock('next-auth/react', () => ({ signIn: vi.fn() }));
 vi.mock('next/navigation', () => ({
     redirect: (to: string) => {
@@ -19,7 +20,8 @@ describe('auth pages', () => {
         expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Tumogroup monitor');
         expect(screen.getAllByRole('button')).toHaveLength(1);
         expect(screen.getByRole('button', { name: 'Sign in with GitHub' })).toBeTruthy();
-        expect(document.body.textContent).toBe('Tumogroup monitorSign in with GitHub');
+        const content = document.querySelector('[data-auth-content]')!;
+        expect(content.textContent).toBe('Tumogroup monitorRenovate updates across your repos.Sign in with GitHub');
     });
 
     it('denied keeps its wording and offers no sign-in', () => {
