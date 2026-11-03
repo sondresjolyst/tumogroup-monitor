@@ -33,7 +33,7 @@ test('Sign out ends on the sign-in page, drops the session and closes the Renova
     expect((await signOutPost).status()).toBeLessThan(400);
     await expect(page).toHaveURL(/\/signin/);
     await expect(page.getByRole('button', { name: 'Sign in with GitHub' })).toBeVisible();
-    expect((await context.cookies()).filter((cookie) => cookie.name.endsWith('next-auth.session-token') && cookie.value !== '')).toEqual([]);
+    expect((await context.cookies()).filter((cookie) => cookie.name.startsWith('__Secure-next-auth.session-token') && cookie.value !== '')).toEqual([]);
 
     await page.goto('/renovate');
     await expect(page).toHaveURL(/\/signin\?callbackUrl=%2Frenovate/);

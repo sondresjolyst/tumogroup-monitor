@@ -30,7 +30,7 @@ export function SignOutButton() {
             disabled={pending}
             aria-busy={pending}
             onClick={start}
-            className="shrink-0 rounded-button border border-line px-3 py-1.5 text-sm text-muted enabled:hover:bg-surface enabled:hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-progress"
+            className="min-h-11 shrink-0 rounded-button border border-line px-3 py-1.5 text-sm md:min-h-0 text-muted enabled:hover:bg-surface enabled:hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-progress"
         >
             Sign out
         </button>
