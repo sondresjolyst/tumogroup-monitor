@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const signIn = vi.fn();
@@ -44,5 +44,20 @@ describe('SignInButton', () => {
         render(<SignInButton callbackUrl="/renovate" />);
         fireEvent.click(screen.getByRole('button'));
         await vi.waitFor(() => expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(false));
+    });
+
+    it('becomes usable again when the page is restored from the cache', () => {
+        signIn.mockReturnValue(new Promise(() => {}));
+        render(<SignInButton callbackUrl="/renovate" />);
+        fireEvent.click(screen.getByRole('button'));
+        expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(true);
+        const fresh = new Event('pageshow') as PageTransitionEvent;
+        Object.defineProperty(fresh, 'persisted', { value: false });
+        act(() => { window.dispatchEvent(fresh); });
+        expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(true);
+        const restored = new Event('pageshow') as PageTransitionEvent;
+        Object.defineProperty(restored, 'persisted', { value: true });
+        act(() => { window.dispatchEvent(restored); });
+        expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(false);
     });
 });

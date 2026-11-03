@@ -12,7 +12,7 @@ function GitHubMark() {
 }
 
 function Spinner() {
-    return <span aria-hidden="true" className="inline-block h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />;
+    return <span aria-hidden="true" className="inline-block h-5 w-5 shrink-0 animate-spin motion-reduce:animate-none rounded-full border-2 border-current border-t-transparent" />;
 }
 
 export function SignInButton({ callbackUrl }: { callbackUrl: string }) {
@@ -42,7 +42,7 @@ export function SignInButton({ callbackUrl }: { callbackUrl: string }) {
             disabled={pending}
             aria-busy={pending}
             onClick={start}
-            className="flex w-full items-center justify-center gap-3 rounded-button bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-progress disabled:opacity-70"
+            className="flex w-full items-center justify-center gap-3 rounded-button bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground enabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-progress"
         >
             {pending ? <Spinner /> : <GitHubMark />}
             <span>Sign in with GitHub</span>
