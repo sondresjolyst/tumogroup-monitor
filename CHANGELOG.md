@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1](https://github.com/sondresjolyst/tumogroup-monitor/compare/v0.2.0...v0.2.1) (2026-11-15)
+
+
+### Dependencies
+
+* **docker:** update node from 26.12.1-slim to 26.13.0-slim ([9e2e0f8](https://github.com/sondresjolyst/tumogroup-monitor/commit/9e2e0f89023fd842c81f16bb5769762f352734e0))
+* **docker:** update node from 26.13.0-slim to 26.13.1-slim ([1ae0164](https://github.com/sondresjolyst/tumogroup-monitor/commit/1ae0164f1514d55f946f34c602f9102ac69751ba))
+* **npm:** update next from 16.4.3 to 16.4.5 ([eea5e65](https://github.com/sondresjolyst/tumogroup-monitor/commit/eea5e653aee93b17a437ccede57553d8485a74f8))
+
 ## [0.2.0](https://github.com/sondresjolyst/tumogroup-monitor/compare/v0.1.0...v0.2.0) (2026-11-03)
 
 
