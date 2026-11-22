@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/sondresjolyst/tumogroup-monitor/compare/v0.2.1...v0.2.2) (2026-11-22)
+
+
+### Dependencies
+
+* **npm:** update @sjolystinnovation/app-kit from 1.6.1 to 1.7.0 ([034b0aa](https://github.com/sondresjolyst/tumogroup-monitor/commit/034b0aab01637a4efbdb705fb7bc6587be2805aa))
+* **npm:** update next from 16.4.5 to 16.4.6 ([debf97d](https://github.com/sondresjolyst/tumogroup-monitor/commit/debf97d7a01aeacfd0bc9dfa8cd41e8106e61360))
+
 ## [0.2.1](https://github.com/sondresjolyst/tumogroup-monitor/compare/v0.2.0...v0.2.1) (2026-11-15)
 
 
